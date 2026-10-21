@@ -1,0 +1,1403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>互动营销系统 · 交互原型（大屏抽奖 / 扫码 / 小游戏 / 管理后台）</title>
+<style>
+  :root{
+    --red:#d4380d; --red2:#e64533; --gold:#f5b53f; --gold2:#c08a1e;
+    --blue:#2563eb; --green:#0e8a5f; --ink:#1f2329; --ink2:#4a5160; --ink3:#8a909c;
+    --line:#e5e7ec; --bg:#f5f6f8; --card:#fff;
+    --bs-bg1:#1a0b2e; --bs-bg2:#3d1055; --bs-bg3:#0d0618;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"PingFang SC","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+    background:var(--bg);color:var(--ink);font-size:14px;line-height:1.6}
+  button{font-family:inherit;cursor:pointer;border:none}
+  input,select,textarea{font-family:inherit;font-size:13px}
+
+  /* ============ 顶部导航 ============ */
+  .topnav{position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:18px;
+    background:#17121f;color:#fff;padding:0 22px;height:54px;box-shadow:0 2px 12px rgba(0,0,0,.25)}
+  .topnav .logo{font-weight:800;font-size:15px;letter-spacing:1px;
+    background:linear-gradient(90deg,var(--gold),#ff8a5c);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .topnav .tabs{display:flex;gap:4px;flex:1}
+  .topnav .tab{padding:6px 14px;border-radius:8px;font-size:13px;color:#b8b3c4;background:transparent;transition:.15s}
+  .topnav .tab:hover{color:#fff;background:rgba(255,255,255,.08)}
+  .topnav .tab.active{color:#fff;background:linear-gradient(135deg,var(--red),#e0621f);font-weight:600}
+  .topnav .hint{font-size:11.5px;color:#8a8496}
+
+  .screen{display:none}
+  .screen.active{display:block}
+
+  /* ============ 通用 ============ */
+  .btn{padding:8px 18px;border-radius:8px;font-size:13.5px;font-weight:600;transition:.15s}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn-gold{background:linear-gradient(135deg,#ffd76e,#f0a020);color:#5c3a00;box-shadow:0 4px 14px rgba(240,160,32,.35)}
+  .btn-gold:hover:not(:disabled){filter:brightness(1.08)}
+  .btn-red{background:linear-gradient(135deg,var(--red2),#b3261e);color:#fff}
+  .btn-blue{background:var(--blue);color:#fff}
+  .btn-green{background:var(--green);color:#fff}
+  .btn-ghost{background:#fff;border:1px solid var(--line);color:var(--ink2)}
+  .btn-ghost:hover{border-color:var(--blue);color:var(--blue)}
+  .btn-sm{padding:3px 10px;font-size:12px;border-radius:6px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .panel h3{font-size:14px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .panel h3::before{content:"";width:4px;height:14px;border-radius:2px;background:linear-gradient(180deg,var(--red),var(--gold))}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{background:#f7f8fa;color:var(--ink2);text-align:left;font-weight:600}
+  th,td{border:1px solid var(--line);padding:7px 10px;vertical-align:middle}
+  tbody tr:nth-child(even){background:#fafbfc}
+  .tag{display:inline-block;padding:0 8px;border-radius:999px;font-size:11px;line-height:18px;font-weight:600}
+  .tag.g{background:#e9f7f1;color:var(--green)} .tag.r{background:#fdeee8;color:var(--red)}
+  .tag.b{background:#eef4ff;color:var(--blue)} .tag.a{background:#fdf3e3;color:#9a6206}
+  .tag.p{background:#f2edfd;color:#6d43c8}
+  .muted{color:var(--ink3);font-size:12px}
+
+  /* ============ 大屏 ============ */
+  #screen-bigscreen{padding:18px}
+  .bs{position:relative;min-height:calc(100vh - 90px);border-radius:16px;overflow:hidden;
+    background:linear-gradient(160deg,var(--bs-bg1),var(--bs-bg2) 55%,var(--bs-bg3));color:#fff}
+  .bs-bg{position:absolute;inset:0;background-size:cover;background-position:center;opacity:.9}
+  .bs-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(13,6,24,.55),rgba(13,6,24,.82))}
+  .bs>*{position:relative;z-index:1}
+  .bs-top{display:flex;align-items:center;justify-content:space-between;padding:20px 28px 6px}
+  .bs-title{display:flex;align-items:center;gap:14px}
+  .bs-title h1{font-size:26px;letter-spacing:2px;text-shadow:0 2px 12px rgba(0,0,0,.5)}
+  .live{font-size:11px;background:var(--red2);padding:2px 10px;border-radius:999px;letter-spacing:1px;animation:blink 1.6s infinite}
+  @keyframes blink{50%{opacity:.35}}
+  .bs-online{font-size:13px;color:#d9d2ea}.bs-online b{color:var(--gold);font-size:20px;margin:0 4px}
+  .bs-main{display:grid;grid-template-columns:1fr 300px;gap:20px;padding:14px 28px 24px}
+  .bs-stage{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:520px}
+  .roll-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;width:100%;max-width:880px}
+  .roll-cell{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:14px;
+    padding:18px 8px;text-align:center;backdrop-filter:blur(6px);transition:.08s}
+  .roll-cell.hot{background:linear-gradient(135deg,rgba(245,181,63,.28),rgba(230,69,51,.22));border-color:var(--gold);
+    transform:scale(1.05);box-shadow:0 0 24px rgba(245,181,63,.35)}
+  .roll-cell .n{font-size:19px;font-weight:700;letter-spacing:1px}
+  .roll-cell .d{font-size:11.5px;color:#c9c2d9;margin-top:4px}
+  .roll-status{margin:26px 0 16px;font-size:15px;color:#e8e2f5;letter-spacing:1px;min-height:24px}
+  .roll-status b{color:var(--gold)}
+  .bs-controls{display:flex;gap:16px}
+  .bs-controls .btn{padding:12px 44px;font-size:16px;border-radius:12px}
+  .bs-side{display:flex;flex-direction:column;gap:16px}
+  .bs-panel{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.13);border-radius:14px;padding:14px 16px;backdrop-filter:blur(6px)}
+  .bs-panel h3{font-size:13px;color:#cfc7e0;margin-bottom:10px;letter-spacing:1px}
+  .pp-row{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.1)}
+  .pp-row:last-child{border:none}
+  .pp-bar{height:5px;border-radius:3px;background:rgba(255,255,255,.12);margin:6px 0 10px;overflow:hidden}
+  .pp-bar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--gold),var(--red2))}
+  #winnerFeed{list-style:none;max-height:240px;overflow:auto;font-size:12.5px}
+  #winnerFeed li{padding:7px 0;border-bottom:1px dashed rgba(255,255,255,.1);display:flex;justify-content:space-between;gap:8px}
+  #winnerFeed .w-name{color:var(--gold);font-weight:600}
+  #winnerFeed .w-prize{color:#d9d2ea;text-align:right}
+  #winnerFeed::-webkit-scrollbar{width:4px}#winnerFeed::-webkit-scrollbar-thumb{background:rgba(255,255,255,.25);border-radius:2px}
+  /* ---------- 奖项选择器（滑动选奖） ---------- */
+  .prize-picker{width:100%;max-width:880px;margin-bottom:18px}
+  .prize-picker .pp-label{font-size:12px;color:#cfc7e0;letter-spacing:2px;margin-bottom:8px;
+    display:flex;align-items:center;gap:10px}
+  .prize-picker .pp-label::after{content:"";flex:1;height:1px;background:rgba(255,255,255,.15)}
+  .pp-arrows{display:flex;gap:6px}
+  .pp-arrows button{width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.1);
+    border:1px solid rgba(255,255,255,.2);color:#fff;font-size:13px;line-height:1;padding:0}
+  .pp-arrows button:hover{background:rgba(255,255,255,.22)}
+  .prize-track{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;
+    padding:12px 2px 10px;-webkit-overflow-scrolling:touch}
+  .prize-track::-webkit-scrollbar{height:4px}
+  .prize-track::-webkit-scrollbar-thumb{background:rgba(255,255,255,.25);border-radius:2px}
+  .pcard{flex:0 0 152px;scroll-snap-align:center;background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px 14px;cursor:pointer;
+    transition:.15s;position:relative;backdrop-filter:blur(6px)}
+  .pcard:hover{border-color:rgba(245,181,63,.6)}
+  .pcard.selected{border-color:var(--gold);
+    background:linear-gradient(135deg,rgba(245,181,63,.22),rgba(230,69,51,.14));
+    box-shadow:0 0 20px rgba(245,181,63,.3);transform:translateY(-2px)}
+  .pcard .pl{font-size:14px;font-weight:800;color:var(--gold);letter-spacing:1px}
+  .pcard .pn{font-size:12.5px;color:#e8e2f5;margin-top:3px}
+  .pcard .ps{font-size:11px;color:#a99fc0;margin-top:5px}
+  .pcard .ps b{color:#fff}
+  .pcard.soldout{opacity:.45;filter:grayscale(.7)}
+  .pcard .done{position:absolute;top:8px;right:8px;font-size:10px;background:rgba(0,0,0,.4);
+    border-radius:4px;padding:1px 6px;color:#c9c2d9}
+  .pcard .sel-tag{position:absolute;top:-9px;left:50%;transform:translateX(-50%);font-size:10px;
+    font-weight:700;background:linear-gradient(90deg,#ffd76e,#f0a020);color:#5c3a00;border-radius:999px;
+    padding:1px 10px;display:none;white-space:nowrap}
+  .pcard.selected .sel-tag{display:block}
+
+  .winner-modal{position:absolute;inset:0;z-index:20;display:none;align-items:center;justify-content:center;
+    background:rgba(8,3,16,.72);backdrop-filter:blur(4px)}
+  .winner-modal.show{display:flex;animation:fadein .3s}
+  @keyframes fadein{from{opacity:0}}
+  .winner-card{text-align:center;animation:pop .5s cubic-bezier(.2,1.4,.4,1)}
+  @keyframes pop{from{transform:scale(.5);opacity:0}}
+  .winner-card .crown{font-size:44px}
+  .wlevel{display:inline-block;background:linear-gradient(90deg,#ffd76e,#f0a020);color:#5c3a00;
+    font-weight:800;padding:3px 20px;border-radius:999px;font-size:15px;letter-spacing:3px;margin-bottom:6px}
+  .winner-card .wn{font-size:44px;font-weight:800;letter-spacing:3px;margin:10px 0 4px;
+    background:linear-gradient(90deg,#ffe9a8,#ffb84d,#ff7a45);-webkit-background-clip:text;background-clip:text;color:transparent;
+    text-shadow:0 0 40px rgba(255,184,77,.4)}
+  .winner-card .wp{font-size:20px;color:#fff;letter-spacing:2px}
+  .winner-card .wdept{font-size:13px;color:#c9c2d9;margin-top:8px}
+  .winner-card .wclose{margin-top:26px}
+  @media(max-width:960px){.bs-main{grid-template-columns:1fr}.roll-grid{grid-template-columns:repeat(3,1fr)}}
+
+  /* ============ 扫码入口 ============ */
+  #screen-scan{padding:36px 18px;display:none;justify-content:center}
+  #screen-scan.active{display:flex}
+  .phone{width:375px;max-width:100%;border-radius:36px;background:#0f0d16;padding:12px;
+    box-shadow:0 24px 60px rgba(20,10,40,.35)}
+  .phone-inner{border-radius:26px;overflow:hidden;background:#fff;min-height:640px;display:flex;flex-direction:column;position:relative}
+  .phone-notch{height:26px;display:flex;align-items:center;justify-content:center}
+  .phone-notch i{width:110px;height:6px;border-radius:3px;background:#d8d4e0}
+  .poster{flex:1;background:linear-gradient(165deg,#8f1d0c,#c62f1c 60%,#e0621f);color:#fff;
+    display:flex;flex-direction:column;align-items:center;padding:28px 22px 22px;text-align:center;position:relative;overflow:hidden}
+  .poster::before,.poster::after{content:"";position:absolute;border-radius:50%;border:1px solid rgba(255,255,255,.18)}
+  .poster::before{width:260px;height:260px;top:-90px;right:-90px}
+  .poster::after{width:200px;height:200px;bottom:-70px;left:-70px}
+  .poster .p-title{font-size:24px;font-weight:800;letter-spacing:2px;margin:6px 0 4px}
+  .poster .p-sub{font-size:12.5px;color:#ffd9cc;letter-spacing:1px}
+  .poster .qr-box{margin:22px 0 14px;background:#fff;border-radius:16px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .poster .qr-box canvas{display:block;border-radius:6px}
+  .poster .p-rules{font-size:12px;color:#ffe3d8;line-height:1.9;text-align:left;
+    background:rgba(0,0,0,.22);border-radius:12px;padding:12px 16px;width:100%}
+  .poster .p-actions{margin-top:auto;width:100%;display:flex;flex-direction:column;gap:10px;padding-top:18px}
+  .btn-wechat{background:#1aad19;color:#fff;padding:12px;border-radius:12px;font-size:15px;font-weight:700}
+  .btn-phone{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.4);color:#fff;padding:10px;border-radius:12px;font-size:13.5px}
+
+  /* ============ 移动端小游戏 ============ */
+  #screen-mobile{padding:36px 18px;display:none;justify-content:center}
+  #screen-mobile.active{display:flex}
+  .app-head{background:linear-gradient(135deg,#c62f1c,#e0621f);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px}
+  .app-head .avatar{width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.25);
+    display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;border:2px solid rgba(255,255,255,.5)}
+  .app-head .u-name{font-size:15px;font-weight:700}
+  .app-head .u-sub{font-size:11.5px;color:#ffd9cc}
+  .app-head .chance{margin-left:auto;text-align:right}
+  .app-head .chance b{font-size:22px;color:#ffe9a8}
+  .app-head .chance span{display:block;font-size:10.5px;color:#ffd9cc}
+  .app-body{flex:1;overflow:auto;padding:16px;background:#f7f7f9}
+  .app-view{display:none}.app-view.active{display:block;animation:slidein .25s}
+  @keyframes slidein{from{opacity:0;transform:translateX(14px)}}
+  .banner{border-radius:14px;padding:18px;color:#fff;margin-bottom:14px;
+    background:linear-gradient(120deg,#2b1055,#7597de)}
+  .banner h4{font-size:16px;margin-bottom:4px}
+  .banner p{font-size:12px;color:#dfe6ff}
+  .game-list{display:grid;gap:12px}
+  .game-card{background:#fff;border-radius:14px;padding:14px;display:flex;align-items:center;gap:12px;
+    border:1px solid var(--line);cursor:pointer;transition:.15s}
+  .game-card:hover{border-color:var(--red);transform:translateY(-1px);box-shadow:0 6px 16px rgba(212,56,13,.1)}
+  .game-card .gi{width:52px;height:52px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;flex:none}
+  .game-card .gt{font-weight:700;font-size:14px}
+  .game-card .gd{font-size:11.5px;color:var(--ink3);margin-top:2px}
+  .game-card .go{margin-left:auto}
+  .btn-full{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.25);
+    padding:6px 14px;border-radius:8px;font-size:12.5px}
+  .btn-full:hover{background:rgba(255,255,255,.2)}
+  :fullscreen{background:#0d0618}
+  :fullscreen .screen.active{height:calc(100vh - 54px);overflow:auto}
+  .tap-screen{display:none;text-align:center}
+  .tap-screen.on{display:block}
+  .tap-hero{font-size:52px;margin:18px 0 6px}
+  .tap-records{display:flex;gap:20px;justify-content:center;margin:18px 0}
+  .tap-records div{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 22px;min-width:96px}
+  .tap-records b{display:block;font-size:24px;color:var(--red)}
+  .tap-records span{font-size:11px;color:var(--ink3)}
+  .tap-hud{display:flex;align-items:center;justify-content:space-between;padding:6px 4px 12px}
+  .tap-count-big b{font-size:42px;color:var(--red);font-weight:800}
+  .tap-count-big span{font-size:13px;color:var(--ink2);margin-left:4px}
+  .tap-timer-ring{position:relative;width:74px;height:74px;flex:none}
+  .tap-timer-ring svg{width:74px;height:74px;transform:rotate(-90deg)}
+  .tap-timer-ring circle{fill:none;stroke-width:7}
+  .ring-bg{stroke:#ececf1}
+  .ring-fg{stroke:#d4380d;stroke-linecap:round}
+  .tap-timer-ring>span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:16px;font-weight:800;color:var(--ink)}
+  .tap-live{font-size:12px;color:var(--ink2);margin-bottom:10px}
+  .tap-live b{color:var(--red)}
+  .tap-area{position:relative;height:380px;border-radius:16px;overflow:hidden;
+    background:radial-gradient(circle at 50% 35%,#ff9d6e,#e64533 70%);touch-action:none;user-select:none;
+    -webkit-user-select:none;display:flex;align-items:center;justify-content:center;
+    box-shadow:inset 0 0 0 4px rgba(255,255,255,.25)}
+  .tap-target{font-size:30px;font-weight:800;color:#fff;letter-spacing:4px;
+    text-shadow:0 2px 10px rgba(0,0,0,.3);transition:transform .05s;pointer-events:none}
+  .tap-target.hit{transform:scale(.88)}
+  .tap-float{position:absolute;font-size:20px;font-weight:800;color:#fff;pointer-events:none;
+    animation:floatUp .7s ease-out forwards;text-shadow:0 1px 6px rgba(0,0,0,.35)}
+  @keyframes floatUp{0%{opacity:1;transform:translateY(0) scale(1)}
+    100%{opacity:0;transform:translateY(-70px) scale(1.5)}}
+  .tap-final b{font-size:52px;color:var(--red);font-weight:800}
+  .tap-final span{font-size:14px;color:var(--ink2);margin-left:6px}
+  .bs-rank{list-style:none;font-size:12.5px;max-height:172px;overflow:auto}
+  .bs-rank li{display:flex;justify-content:space-between;padding:5px 0;
+    border-bottom:1px dashed rgba(255,255,255,.1)}
+  .bs-rank li.me{color:var(--gold);font-weight:700}
+  .bs-rank .no{display:inline-block;width:18px;height:18px;border-radius:5px;
+    background:rgba(255,255,255,.15);text-align:center;line-height:18px;font-size:10.5px;margin-right:8px}
+  .shake-area{position:relative;height:300px;border-radius:16px;overflow:hidden;touch-action:none;
+    user-select:none;-webkit-user-select:none;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:16px;background:radial-gradient(circle at 50% 30%,#8ec5ff,#2563eb 78%);
+    box-shadow:inset 0 0 0 4px rgba(255,255,255,.25)}
+  .shake-phone{font-size:76px;filter:drop-shadow(0 8px 18px rgba(0,0,0,.3))}
+  .shake-phone.hit{animation:shakeit .18s}
+  @keyframes shakeit{0%,100%{transform:rotate(0)}25%{transform:rotate(-16deg) translateX(-6px)}
+    75%{transform:rotate(16deg) translateX(6px)}}
+  .shake-hint{color:#fff;font-size:15px;font-weight:700;letter-spacing:2px}
+  .shake-bar{width:70%;height:8px;border-radius:4px;background:rgba(255,255,255,.25);overflow:hidden}
+  .shake-bar i{display:block;height:100%;width:0;border-radius:4px;
+    background:linear-gradient(90deg,#ffe9a8,#ff7a45);transition:width .1s}
+  .prize-item{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;gap:12px;align-items:center;margin-bottom:10px}
+  .prize-item .pi{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,#fdf3e3,#fdeee8);
+    display:flex;align-items:center;justify-content:center;font-size:20px;flex:none}
+  .prize-item .pt{font-weight:700;font-size:13.5px}
+  .prize-item .pd{font-size:11px;color:var(--ink3)}
+  .redeem-code{font-family:Consolas,monospace;background:#f0f1f4;border-radius:6px;padding:2px 8px;font-size:11.5px;color:var(--red)}
+  .app-tabs{display:flex;border-top:1px solid var(--line);background:#fff}
+  .app-tabs button{flex:1;padding:9px 0 11px;font-size:11.5px;color:var(--ink3);background:none}
+  .app-tabs button.active{color:var(--red);font-weight:700}
+  .app-tabs .ti{display:block;font-size:19px;line-height:1.2}
+  .empty{text-align:center;color:var(--ink3);padding:36px 0;font-size:12.5px}
+
+  /* ============ 管理后台 ============ */
+  #screen-admin{padding:18px}
+  .admin{display:grid;grid-template-columns:190px 1fr;gap:16px;align-items:start}
+  .admin-nav{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px;position:sticky;top:72px}
+  .admin-nav button{display:flex;align-items:center;gap:9px;width:100%;padding:9px 12px;border-radius:8px;
+    font-size:13px;color:var(--ink2);background:none;text-align:left;margin-bottom:2px}
+  .admin-nav button:hover{background:#f5f6f8}
+  .admin-nav button.active{background:linear-gradient(135deg,#fdeee8,#fdf3e3);color:var(--red);font-weight:700}
+  .admin-pane{display:none}.admin-pane.active{display:block;animation:slidein .2s}
+  .pane-title{font-size:17px;font-weight:800;margin-bottom:14px;display:flex;align-items:center;gap:10px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  @media(max-width:1100px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .kpi .v{font-size:24px;font-weight:800;color:var(--red)}
+  .kpi .l{font-size:12px;color:var(--ink3)}
+  .kpi .t{font-size:11px;color:var(--green);margin-top:2px}
+  .form-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .form-row .f{flex:1;min-width:180px}
+  .form-row label{display:block;font-size:12px;color:var(--ink2);margin-bottom:4px;font-weight:600}
+  .form-row input,.form-row select,.form-row textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  .form-row input:focus,.form-row textarea:focus{outline:none;border-color:var(--blue)}
+  .bg-preview{height:120px;border-radius:10px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;
+    color:var(--ink3);font-size:12px;background:#fafbfc center/cover;margin-bottom:10px}
+  .chart-box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+  .chart-box h4{font-size:13.5px;margin-bottom:8px}
+  .chart-box canvas{width:100%;height:200px;display:block}
+  .ops{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+  .status-dot.idle{background:#c9ccd4}.status-dot.rolling{background:var(--red);animation:blink 1s infinite}
+  .status-dot.ended{background:var(--green)}
+  @media(max-width:820px){.admin{grid-template-columns:1fr}.admin-nav{position:static;display:flex;flex-wrap:wrap}
+    .admin-nav button{width:auto}}
+
+  /* ============ 彩带canvas ============ */
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:999}
+  .toast{position:fixed;left:50%;bottom:36px;transform:translateX(-50%);background:#1f2329;color:#fff;
+    padding:10px 22px;border-radius:10px;font-size:13px;z-index:1000;opacity:0;transition:.25s;pointer-events:none}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<header class="topnav">
+  <div class="logo">🎉 互动营销系统</div>
+  <nav class="tabs">
+    <button class="tab active" data-screen="bigscreen">📺 大屏抽奖</button>
+    <button class="tab" data-screen="scan">📱 扫码入口</button>
+    <button class="tab" data-screen="mobile">🎮 移动端小游戏</button>
+    <button class="tab" data-screen="admin">⚙️ 管理后台</button>
+  </nav>
+  <button class="btn-full" id="btnFullscreen">⛶ 全屏</button>
+  <span class="hint">交互原型 · 数据为模拟</span>
+</header>
+
+<!-- ==================== 大屏抽奖 ==================== -->
+<section id="screen-bigscreen" class="screen active">
+  <div class="bs">
+    <div class="bs-bg" id="bsBg"></div>
+    <div class="bs-top">
+      <div class="bs-title">
+        <h1 id="bsActivityName">2026 年度盛典 · 幸运抽奖</h1>
+        <span class="live">● LIVE</span>
+      </div>
+      <div class="bs-online">当前在线 <b id="bsOnline">0</b> 人</div>
+    </div>
+    <div class="bs-main">
+      <div class="bs-stage">
+        <div class="prize-picker">
+          <div class="pp-label">◀ 滑动 / 点击选择本轮奖项 ▶
+            <span class="pp-arrows">
+              <button id="ppPrev" title="上一个奖项">‹</button>
+              <button id="ppNext" title="下一个奖项">›</button>
+            </span>
+          </div>
+          <div class="prize-track" id="prizeTrack"></div>
+        </div>
+        <div class="roll-grid" id="rollGrid"></div>
+        <div class="roll-status" id="rollStatus">🎊 全场池抽模式 · 点击「开始抽奖」启动名单滚动</div>
+        <div class="bs-controls">
+          <button class="btn btn-gold" id="btnStartRoll">开始抽奖</button>
+          <button class="btn btn-red" id="btnStopRoll" disabled>停 止</button>
+        </div>
+      </div>
+      <aside class="bs-side">
+        <div class="bs-panel">
+          <h3>🏆 奖项进度</h3>
+          <div id="prizeProgress"></div>
+        </div>
+        <div class="bs-panel">
+          <h3>🎉 中奖播报</h3>
+          <ul id="winnerFeed"><li class="muted" style="border:none">等待第一位幸运儿…</li></ul>
+        </div>
+        <div class="bs-panel" id="bsGamePanel" style="display:none">
+          <h3>👆 拼手速实时榜</h3>
+          <ul class="bs-rank" id="bsGameRank"></ul>
+        </div>
+      </aside>
+    </div>
+    <div class="winner-modal" id="winnerModal">
+      <div class="winner-card">
+        <div class="crown">🎊</div>
+        <div class="wlevel" id="wmLevel">—</div>
+        <div class="wn" id="wmName">—</div>
+        <div class="wp" id="wmPrize">—</div>
+        <div class="wdept" id="wmDept">—</div>
+        <div><button class="btn btn-ghost wclose" id="wmClose">知道了</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 扫码入口 ==================== -->
+<section id="screen-scan" class="screen">
+  <div class="phone">
+    <div class="phone-inner">
+      <div class="phone-notch"><i></i></div>
+      <div class="poster">
+        <div style="font-size:34px">🎁</div>
+        <div class="p-title" id="posterTitle">2026 年度盛典</div>
+        <div class="p-sub">扫码参与 · 玩游戏赢大奖</div>
+        <div class="qr-box"><canvas id="qrCanvas" width="150" height="150"></canvas></div>
+        <div class="p-rules" id="posterRules">
+          扫描二维码，授权手机号即可参与，扫码之后既可以抽奖也可参与游戏
+        </div>
+        <div class="p-actions">
+          <button class="btn-wechat" id="btnWxLogin">💬 微信一键登录参与</button>
+          <button class="btn-phone" id="btnPhoneLogin">📞 手机号验证码登录</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 移动端小游戏 ==================== -->
+<section id="screen-mobile" class="screen">
+  <div class="phone">
+    <div class="phone-inner">
+      <div class="phone-notch"><i></i></div>
+      <div class="app-head">
+        <div class="avatar" id="appAvatar">?</div>
+        <div>
+          <div class="u-name" id="appName">未登录</div>
+          <div class="u-sub" id="appDept">—</div>
+        </div>
+        <div class="chance"><b id="appChance">0</b><span>抽奖机会</span></div>
+      </div>
+      <div class="app-body">
+        <!-- 首页 -->
+        <div class="app-view active" id="view-home">
+          <div class="banner">
+            <h4>🎪 小游戏大厅</h4>
+            <p>玩手速 / 摇一摇赢抽奖机会，现场大屏开奖 · 今日已参与 <b id="homePlays">0</b> 局</p>
+          </div>
+          <div class="game-list">
+            <div class="game-card" onclick="gotoView('view-tap')">
+              <div class="gi" style="background:#fdeee8">👆</div>
+              <div><div class="gt">疯狂手速</div><div class="gd">10 秒狂点，30 次起换机会</div></div>
+              <span class="tag r go">去玩 →</span>
+            </div>
+            <div class="game-card" onclick="gotoView('view-shake')">
+              <div class="gi" style="background:#eef4ff">📱</div>
+              <div><div class="gt">摇一摇</div><div class="gd">10 秒狂摇手机，50 振幅起换机会</div></div>
+              <span class="tag b go">去摇 →</span>
+            </div>
+            <div class="game-card" onclick="gotoView('view-prizes')">
+              <div class="gi" style="background:#e9f7f1">🎁</div>
+              <div><div class="gt">我的奖品</div><div class="gd">查看中奖记录与核销码</div></div>
+              <span class="tag g go">查看 →</span>
+            </div>
+          </div>
+        </div>
+        <!-- 拼手速（参考大屏互动拼手速玩法） -->
+        <div class="app-view" id="view-tap">
+          <!-- 开始 -->
+          <div class="tap-screen on" id="tapStart">
+            <div class="tap-hero">👆</div>
+            <h3 style="font-size:20px">疯狂手速</h3>
+            <p class="muted">10 秒内疯狂点击，和全场比手速！</p>
+            <div class="tap-records">
+              <div><b id="tapBest2">0</b><span>我的最佳</span></div>
+              <div><b id="tapRank">-</b><span>当前排名</span></div>
+            </div>
+            <button class="btn btn-red" id="btnTapStart" style="padding:12px 46px;font-size:16px">开始挑战</button>
+            <p class="muted" style="margin-top:14px">档位奖励：30 次 +1 机会 / 50 次 +2 / 80 次 +3 · 进入前三再 +1</p>
+          </div>
+          <!-- 进行中 -->
+          <div class="tap-screen" id="tapPlay">
+            <div class="tap-hud">
+              <div class="tap-count-big"><b id="tapCountBig">0</b><span>次</span></div>
+              <div class="tap-timer-ring">
+                <svg viewBox="0 0 100 100">
+                  <circle class="ring-bg" cx="50" cy="50" r="44"/>
+                  <circle class="ring-fg" id="ringFg" cx="50" cy="50" r="44"/>
+                </svg>
+                <span id="tapTimeLeft">10.0</span>
+              </div>
+            </div>
+            <div class="tap-live">实时第 <b id="tapLiveRank">-</b> 名 · 连击 <b id="tapCombo">0</b> · 大屏同步排行中</div>
+            <div class="tap-area" id="tapArea">
+              <div class="tap-target" id="tapTarget">疯狂点我</div>
+            </div>
+          </div>
+          <!-- 结果 -->
+          <div class="tap-screen" id="tapResult">
+            <div class="tap-hero" id="tapResIcon">🎉</div>
+            <h3 id="tapResTitle" style="font-size:20px">挑战结束</h3>
+            <div class="tap-final"><b id="tapFinalCount">0</b><span>次</span></div>
+            <p id="tapResRank" class="muted" style="margin-top:6px"></p>
+            <p id="tapResReward" style="font-weight:700;color:var(--red);margin-top:6px"></p>
+            <div style="display:flex;gap:10px;justify-content:center;margin-top:18px">
+              <button class="btn btn-ghost" id="btnTapAgain">再来一次</button>
+              <button class="btn btn-red" onclick="gotoView('view-prizes')">我的奖品</button>
+            </div>
+          </div>
+        </div>
+        <!-- 摇一摇 -->
+        <div class="app-view" id="view-shake">
+          <!-- 开始 -->
+          <div class="tap-screen on" id="shakeStart">
+            <div class="tap-hero">📱</div>
+            <h3 style="font-size:20px">摇一摇</h3>
+            <p class="muted">10 秒疯狂摇动手机，和全场比臂力！</p>
+            <div class="tap-records">
+              <div><b id="shakeBest2">0</b><span>我的最佳</span></div>
+              <div><b id="shakeRank">-</b><span>当前排名</span></div>
+            </div>
+            <button class="btn btn-red" id="btnShakeStart" style="padding:12px 46px;font-size:16px">开始挑战</button>
+            <p class="muted" style="margin-top:14px">档位奖励：50 振幅 +1 机会 / 120 +2 / 220 +3 · 前三再 +1<br>
+              电脑或无传感器设备可点「模拟摇动」参赛</p>
+          </div>
+          <!-- 进行中 -->
+          <div class="tap-screen" id="shakePlay">
+            <div class="tap-hud">
+              <div class="tap-count-big"><b id="shakeCount">0</b><span>振幅</span></div>
+              <div class="tap-timer-ring">
+                <svg viewBox="0 0 100 100">
+                  <circle class="ring-bg" cx="50" cy="50" r="44"/>
+                  <circle class="ring-fg" id="shakeRing" cx="50" cy="50" r="44"/>
+                </svg>
+                <span id="shakeTimeLeft">10.0</span>
+              </div>
+            </div>
+            <div class="tap-live">实时第 <b id="shakeLiveRank">-</b> 名 · 大屏同步排行中</div>
+            <div class="shake-area" id="shakeArea">
+              <div class="shake-phone" id="shakePhone">📱</div>
+              <div class="shake-bar"><i id="shakeBar"></i></div>
+              <div class="shake-hint">疯狂摇动手机！</div>
+            </div>
+            <button class="btn btn-ghost" id="btnShakeSim" style="margin-top:12px">👆 点击模拟摇动（无传感器设备）</button>
+          </div>
+          <!-- 结果 -->
+          <div class="tap-screen" id="shakeResult">
+            <div class="tap-hero" id="shakeResIcon">🎉</div>
+            <h3 id="shakeResTitle" style="font-size:20px">挑战结束</h3>
+            <div class="tap-final"><b id="shakeFinal">0</b><span>振幅</span></div>
+            <p id="shakeResRank" class="muted" style="margin-top:6px"></p>
+            <p id="shakeResReward" style="font-weight:700;color:var(--red);margin-top:6px"></p>
+            <div style="display:flex;gap:10px;justify-content:center;margin-top:18px">
+              <button class="btn btn-ghost" id="btnShakeAgain">再来一次</button>
+              <button class="btn btn-red" onclick="gotoView('view-prizes')">我的奖品</button>
+            </div>
+          </div>
+        </div>
+        <!-- 我的奖品 -->
+        <div class="app-view" id="view-prizes">
+          <h4 style="margin-bottom:10px">🎁 我的中奖记录</h4>
+          <div id="myPrizeList"><div class="empty">还没有中奖，去转盘试试运气～</div></div>
+        </div>
+      </div>
+      <div class="app-tabs">
+        <button class="active" onclick="gotoView('view-home')"><span class="ti">🏠</span>首页</button>
+        <button onclick="gotoView('view-tap')"><span class="ti">👆</span>手速</button>
+        <button onclick="gotoView('view-shake')"><span class="ti">📱</span>摇一摇</button>
+        <button onclick="gotoView('view-prizes')"><span class="ti">🎁</span>我的</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 管理后台 ==================== -->
+<section id="screen-admin" class="screen">
+  <div class="admin">
+    <nav class="admin-nav">
+      <button class="active" data-pane="pane-dash">📊 数据看板</button>
+      <button data-pane="pane-activity">🎨 活动配置</button>
+      <button data-pane="pane-prize">🏆 奖品管理</button>
+      <button data-pane="pane-people">👥 人员名单</button>
+      <button data-pane="pane-lottery">🎰 抽奖控制</button>
+      <button data-pane="pane-record">🧾 中奖记录</button>
+    </nav>
+    <div>
+      <!-- 数据看板 -->
+      <div class="admin-pane active" id="pane-dash">
+        <div class="pane-title">📊 实时数据看板</div>
+        <div class="kpis">
+          <div class="kpi"><div class="v" id="kpiPv">0</div><div class="l">扫码 PV</div><div class="t">↑ 12.4% 同比昨日</div></div>
+          <div class="kpi"><div class="v" id="kpiParticipants">0</div><div class="l">已登录参与</div><div class="t">授权转化率 82%</div></div>
+          <div class="kpi"><div class="v" id="kpiGames">0</div><div class="l">游戏对局</div><div class="t">人均 2.1 局</div></div>
+          <div class="kpi"><div class="v" id="kpiWins">0</div><div class="l">中奖人次</div><div class="t">核销率 76%</div></div>
+        </div>
+        <div class="chart-box"><h4>参与漏斗</h4><canvas id="funnelChart" height="200"></canvas></div>
+        <div class="chart-box"><h4>实时在线人数（近 60 秒）</h4><canvas id="onlineChart" height="200"></canvas></div>
+      </div>
+      <!-- 活动配置 -->
+      <div class="admin-pane" id="pane-activity">
+        <div class="pane-title">🎨 活动配置</div>
+        <div class="panel">
+          <div class="form-row">
+            <div class="f"><label>活动名称</label><input id="cfgName" value="2026 年度盛典 · 幸运抽奖"></div>
+            <div class="f"><label>活动状态</label>
+              <select id="cfgStatus"><option>草稿</option><option selected>已发布</option><option>已结束</option></select></div>
+          </div>
+          <div class="form-row">
+            <div class="f"><label>活动开始时间</label><input type="datetime-local" id="cfgStart"></div>
+            <div class="f"><label>活动结束时间</label><input type="datetime-local" id="cfgEnd"></div>
+          </div>
+          <div class="form-row">
+            <div class="f"><label>大屏背景图片（自定义）</label>
+              <input type="file" id="cfgBgFile" accept="image/*">
+              <div class="bg-preview" id="cfgBgPreview" style="margin-top:8px">未上传 · 当前使用默认渐变背景</div>
+            </div>
+            <div class="f"><label>规则文案</label>
+              <textarea id="cfgRules" rows="4">扫描二维码，授权手机号即可参与，扫码之后既可以抽奖也可参与游戏</textarea></div>
+          </div>
+          <button class="btn btn-blue" id="btnSaveActivity">保存配置并同步大屏</button>
+          <span class="muted" style="margin-left:10px">保存后大屏背景 / 标题 / 扫码页规则将实时更新</span>
+        </div>
+      </div>
+      <!-- 奖品管理 -->
+      <div class="admin-pane" id="pane-prize">
+        <div class="pane-title">🏆 奖品管理</div>
+        <div class="panel" style="margin-bottom:14px">
+          <h3>新增奖品</h3>
+          <div class="form-row">
+            <div class="f"><label>奖品名称</label><input id="prName" placeholder="如：iPhone 17"></div>
+            <div class="f" style="flex:0 0 120px"><label>奖项名称</label><input id="prLevel" placeholder="如：一等奖"></div>
+            <div class="f" style="flex:0 0 100px"><label>库存</label><input id="prStock" type="number" value="1" min="1"></div>
+            <div class="f" style="flex:0 0 100px"><label>概率权重</label><input id="prWeight" type="number" value="10" min="1"></div>
+            <div class="f" style="flex:0 0 100px"><label>每人限中</label><input id="prLimit" type="number" value="1" min="1"></div>
+            <div class="f" style="flex:0 0 90px;display:flex;align-items:flex-end"><button class="btn btn-green" id="btnAddPrize">添加</button></div>
+          </div>
+          <p class="muted">权重越大中奖概率越高；所有奖品共享概率池，「谢谢参与」自动补足剩余概率。</p>
+        </div>
+        <div class="panel">
+          <h3>奖品列表</h3>
+          <table><thead><tr><th>奖项名称</th><th>奖品</th><th>库存</th><th>权重</th><th>限中</th><th>已中</th><th>操作</th></tr></thead>
+          <tbody id="prizeTable"></tbody></table>
+        </div>
+      </div>
+      <!-- 人员名单 -->
+      <div class="admin-pane" id="pane-people">
+        <div class="pane-title">👥 人员名单管理</div>
+        <div class="panel" style="margin-bottom:14px">
+          <h3>批量导入（模拟 Excel 粘贴）</h3>
+          <div class="form-row"><div class="f">
+            <textarea id="importText" rows="4" placeholder="每行一条：姓名,部门,手机号&#10;张伟,技术部,138****0001&#10;李娜,市场部,139****0002"></textarea></div></div>
+          <button class="btn btn-green" id="btnImport">导入名单</button>
+          <button class="btn btn-ghost" id="btnGen50">随机生成 50 人</button>
+          <span class="muted" style="margin-left:8px">共 <b id="peopleTotal">0</b> 人 · 黑名单 <b id="blackTotal">0</b> 人</span>
+        </div>
+        <div class="panel">
+          <h3>名单列表</h3>
+          <div style="max-height:380px;overflow:auto">
+            <table><thead><tr><th>姓名</th><th>部门</th><th>手机号</th><th>机会</th><th>标记</th><th>操作</th></tr></thead>
+            <tbody id="peopleTable"></tbody></table>
+          </div>
+        </div>
+      </div>
+      <!-- 抽奖控制 -->
+      <div class="admin-pane" id="pane-lottery">
+        <div class="pane-title">🎰 抽奖控制台</div>
+        <div class="panel" style="margin-bottom:14px">
+          <h3>场次状态 <span id="roundStatusTag" class="tag g"><span class="status-dot idle"></span>待开始</span></h3>
+          <div class="ops" style="margin:10px 0">
+            <button class="btn btn-gold" id="btnAdminStart">▶ 开始滚动</button>
+            <button class="btn btn-red" id="btnAdminStop" disabled>⏸ 停止开奖</button>
+            <button class="btn btn-ghost" id="btnAdminReset">↺ 重置场次</button>
+          </div>
+          <div class="form-row">
+            <div class="f" style="flex:0 0 210px"><label>本轮抽奖奖项（与大屏同步）</label>
+              <select id="drawPrize"></select></div>
+            <div class="f" style="flex:0 0 160px"><label>每轮抽取人数</label>
+              <input type="number" id="drawCount" value="1" min="1" max="10"></div>
+            <div class="f" style="flex:0 0 220px"><label>手动指定中奖（仅白名单）</label>
+              <select id="manualWinner"></select></div>
+            <div class="f" style="flex:0 0 130px;display:flex;align-items:flex-end">
+              <button class="btn btn-blue" id="btnManual">指定中奖</button></div>
+          </div>
+          <p class="muted">手动指定需白名单成员，操作将写入审计日志；大屏与手机端转盘共用同一奖品库存。</p>
+        </div>
+        <div class="panel">
+          <h3>本场已中奖</h3>
+          <table><thead><tr><th>姓名</th><th>部门</th><th>奖项</th><th>奖品</th><th>时间</th></tr></thead>
+          <tbody id="roundWinTable"></tbody></table>
+        </div>
+      </div>
+      <!-- 中奖记录 -->
+      <div class="admin-pane" id="pane-record">
+        <div class="pane-title">🧾 中奖记录与核销</div>
+        <div class="panel">
+          <div class="ops" style="margin-bottom:12px">
+            <button class="btn btn-ghost" id="btnExport">⬇ 导出 Excel（模拟）</button>
+            <span class="muted">共 <b id="recordTotal">0</b> 条 · 待核销 <b id="recordPending">0</b> 条</span>
+          </div>
+          <table><thead><tr><th>姓名</th><th>部门</th><th>奖项</th><th>奖品</th><th>核销码</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody id="recordTable"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<canvas id="confetti"></canvas>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================
+   全局状态（模拟服务端）
+===================================================== */
+const state = {
+  activity:{ name:'2026 年度盛典 · 幸运抽奖', bgUrl:null, status:'已发布',
+             rules:'扫描二维码，授权手机号即可参与，扫码之后既可以抽奖也可参与游戏' },
+  participants:[], prizes:[], lotteryRecords:[], gameSessions:[],
+  chances:{}, online:326, round:{ status:'idle', wins:[] },
+  currentUser:null, pv:1240, bestTap:0, bestShake:0, currentPrizeId:null
+};
+
+const $ = id => document.getElementById(id);
+const maskName = n => n.length<=1 ? n : n[0]+'*'.repeat(n.length-1);
+const rnd = (a,b)=>a+Math.random()*(b-a);
+const pick = arr => arr[Math.floor(Math.random()*arr.length)];
+
+/* ---------- 模拟数据 ---------- */
+const DEPTS=['技术部','市场部','销售部','人力资源部','财务部','运营部','产品部','设计部'];
+const SURNAMES='张李王刘陈杨赵黄周吴徐孙马朱胡郭何林罗高郑梁谢宋唐许韩冯邓曹彭曾肖田董潘袁蔡蒋余于杜叶程苏魏吕丁任沈姚卢姜崔钟谭陆汪范金石廖贾夏韦付方白邹孟熊秦邱江尹薛闫段雷侯龙史陶黎贺顾毛郝龚邵万钱严覃武戴莫孔向汤'.split('');
+const GIVEN=['伟','芳','娜','敏','静','丽','强','磊','洋','艳','勇','军','杰','娟','涛','明','超','秀英','霞','平','刚','桂英','文','辉','琳','婷','宇','浩','雪','晨','子轩','梓涵','欣怡'];
+
+function genParticipants(n){
+  const list=[];
+  for(let i=0;i<n;i++){
+    const name=pick(SURNAMES)+pick(GIVEN);
+    list.push({ id:i+1, name, dept:pick(DEPTS), phone:'1'+pick(['3','5','7','8'])+'8****'+String(1000+i).slice(-4),
+      isWhite:false, isBlack:false, chance:0 });
+  }
+  return list;
+}
+function defaultPrizes(){
+  return [
+    {id:1, level:'一等奖',   name:'iPhone 17 Pro',stock:1, weight:2, limit:1, won:0},
+    {id:2, level:'二等奖',   name:'戴森吹风机',    stock:3, weight:8, limit:1, won:0},
+    {id:3, level:'三等奖',   name:'100 元购物卡',  stock:10,weight:20,limit:1, won:0},
+    {id:4, level:'四等奖',   name:'品牌周边礼盒',  stock:20,weight:40,limit:2, won:0},
+    {id:5, level:'幸运奖',   name:'10 元优惠券',   stock:50,weight:60,limit:3, won:0}
+  ];
+}
+state.participants = genParticipants(48);
+state.prizes = defaultPrizes();
+state.currentPrizeId = state.prizes[0] ? state.prizes[0].id : null;
+state.participants[0].isWhite = true;
+
+/* ---------- 工具 ---------- */
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._tm); t._tm=setTimeout(()=>t.classList.remove('show'),2200); }
+function now(){ const d=new Date(); return d.toTimeString().slice(0,8); }
+function genCode(){ return 'RX'+Date.now().toString(36).toUpperCase().slice(-6)+Math.floor(rnd(10,99)); }
+
+/* =====================================================
+   顶部 Tab 切换
+===================================================== */
+document.querySelectorAll('.topnav .tab').forEach(tab=>{
+  tab.addEventListener('click',()=>{
+    document.querySelectorAll('.topnav .tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    tab.classList.add('active');
+    $('screen-'+tab.dataset.screen).classList.add('active');
+    if(tab.dataset.screen==='admin'){ renderAdmin(); }
+    if(tab.dataset.screen==='bigscreen'){ renderPrizeProgress(); }
+  });
+});
+
+/* =====================================================
+   全屏模式
+===================================================== */
+$('btnFullscreen').addEventListener('click',()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    if(!req){ toast('当前浏览器不支持全屏，建议在新窗口打开页面'); return; }
+    req.call(el).catch(()=>toast('当前环境不允许全屏（如嵌入预览），请在新窗口打开页面'));
+  }else{
+    (document.exitFullscreen||document.webkitExitFullscreen).call(document);
+  }
+});
+function onFsChange(){
+  const fs=document.fullscreenElement||document.webkitFullscreenElement;
+  $('btnFullscreen').textContent = fs ? '⛶ 退出全屏' : '⛶ 全屏';
+}
+document.addEventListener('fullscreenchange',onFsChange);
+document.addEventListener('webkitfullscreenchange',onFsChange);
+
+/* =====================================================
+   扫码入口
+===================================================== */
+(function drawQR(){
+  const c=$('qrCanvas'), ctx=c.getContext('2d'), n=21, cell=150/n;
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,150,150); ctx.fillStyle='#17121f';
+  let seed=42; const rand=()=> (seed=(seed*1103515245+12345)&0x7fffffff)/0x7fffffff;
+  for(let y=0;y<n;y++) for(let x=0;x<n;x++){
+    const inFinder=(x<7&&y<7)||(x>n-8&&y<7)||(x<7&&y>n-8);
+    if(!inFinder && rand()>0.52) ctx.fillRect(x*cell,y*cell,cell,cell);
+  }
+  const finder=(fx,fy)=>{ ctx.fillStyle='#17121f'; ctx.fillRect(fx*cell,fy*cell,7*cell,7*cell);
+    ctx.fillStyle='#fff'; ctx.fillRect((fx+1)*cell,(fy+1)*cell,5*cell,5*cell);
+    ctx.fillStyle='#c62f1c'; ctx.fillRect((fx+2)*cell,(fy+2)*cell,3*cell,3*cell); };
+  finder(0,0); finder(n-7,0); finder(0,n-7);
+})();
+
+$('btnWxLogin').addEventListener('click',()=>login('微信授权'));
+$('btnPhoneLogin').addEventListener('click',()=>login('手机号验证码'));
+
+function login(way){
+  const eligible=state.participants.filter(p=>!p.isBlack);
+  if(!eligible.length){ toast('名单为空，请先在后台导入人员'); return; }
+  state.currentUser = pick(eligible);
+  state.chances[state.currentUser.id] = state.chances[state.currentUser.id] ?? 2;
+  toast(`✅ ${way}登录成功，已赠送 2 次抽奖机会`);
+  switchScreen('mobile');
+  renderAppHead();
+}
+
+/* =====================================================
+   移动端
+===================================================== */
+function switchScreen(name){
+  document.querySelectorAll('.topnav .tab').forEach(t=>t.classList.toggle('active',t.dataset.screen===name));
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  $('screen-'+name).classList.add('active');
+}
+function gotoView(id){
+  document.querySelectorAll('.app-view').forEach(v=>v.classList.remove('active'));
+  $(id).classList.add('active');
+  document.querySelectorAll('.app-tabs button').forEach((b,i)=>
+    b.classList.toggle('active', ['view-home','view-tap','view-shake','view-prizes'][i]===id));
+  if(id==='view-prizes') renderMyPrizes();
+}
+function renderAppHead(){
+  const u=state.currentUser;
+  if(!u) return;
+  $('appAvatar').textContent=u.name[0];
+  $('appName').textContent=maskName(u.name);
+  $('appDept').textContent=u.dept+' · '+u.phone;
+  $('appChance').textContent=state.chances[u.id]||0;
+  $('homePlays').textContent=state.gameSessions.filter(g=>g.pid===u.id).length;
+  if($('tapBest2')) $('tapBest2').textContent=state.bestTap;
+  if($('tapRank')) $('tapRank').textContent='第 '+tapRankOf(state.bestTap)+' 名';
+  if($('shakeBest2')) $('shakeBest2').textContent=state.bestShake||0;
+  if($('shakeRank')) $('shakeRank').textContent='第 '+shakeRankOf(state.bestShake||0)+' 名';
+}
+
+/* ---------- 拼手速游戏（大屏互动玩法） ---------- */
+const TAP_DURATION=10000;
+let tapS={phase:'idle',count:0,t0:0,raf:null,combo:0,lastTapAt:0,left:TAP_DURATION};
+function getOpponents(){
+  if(!state.tapOpponents || state.tapOpponents._len!==state.participants.length){
+    const me=state.currentUser?state.currentUser.id:-1;
+    state.tapOpponents = state.participants.filter(p=>p.id!==me)
+      .map(p=>({name:p.name,score:Math.floor(rnd(22,118)),shake:Math.floor(rnd(60,260))}));
+    state.tapOpponents._len=state.participants.length;
+  }
+  return state.tapOpponents;
+}
+function tapRankOf(score){ return 1 + getOpponents().filter(o=>o.score>=score).length; }
+function showTapScreen(id){
+  ['tapStart','tapPlay','tapResult'].forEach(x=>$(x).classList.toggle('on',x===id));
+}
+$('btnTapStart').addEventListener('click',startTapGame);
+$('btnTapAgain').addEventListener('click',startTapGame);
+function startTapGame(){
+  if(!state.currentUser){ toast('请先登录'); switchScreen('scan'); return; }
+  tapS={phase:'play',count:0,t0:performance.now(),combo:0,lastTapAt:0,left:TAP_DURATION};
+  showTapScreen('tapPlay');
+  $('tapCountBig').textContent='0'; $('tapCombo').textContent='0';
+  $('tapLiveRank').textContent=tapRankOf(0);
+  $('bsGamePanel').style.display='block';
+  const ring=$('ringFg'), C=2*Math.PI*44;
+  ring.style.strokeDasharray=C; ring.style.strokeDashoffset=0;
+  const loop=t=>{
+    if(tapS.phase!=='play') return;
+    tapS.left=Math.max(0,TAP_DURATION-(t-tapS.t0));
+    $('tapTimeLeft').textContent=(tapS.left/1000).toFixed(1);
+    ring.style.strokeDashoffset=C*(1-tapS.left/TAP_DURATION);
+    ring.style.stroke = tapS.left<3000 ? '#e64533' : '#d4380d';
+    updateBsRank(tapS.count,'score');
+    if(tapS.left<=0){ endTapGame(); return; }
+    tapS.raf=requestAnimationFrame(loop);
+  };
+  tapS.raf=requestAnimationFrame(loop);
+}
+$('tapArea').addEventListener('pointerdown',e=>{
+  if(tapS.phase!=='play') return;
+  e.preventDefault();
+  tapS.count++;
+  const t=performance.now();
+  tapS.combo = (t-tapS.lastTapAt<400) ? tapS.combo+1 : 1;
+  tapS.lastTapAt=t;
+  $('tapCountBig').textContent=tapS.count;
+  $('tapCombo').textContent=tapS.combo;
+  $('tapLiveRank').textContent=tapRankOf(tapS.count);
+  const tgt=$('tapTarget'); tgt.classList.add('hit'); setTimeout(()=>tgt.classList.remove('hit'),60);
+  const rect=$('tapArea').getBoundingClientRect();
+  const f=document.createElement('span');
+  f.className='tap-float'; f.textContent='+1';
+  f.style.left=(e.clientX-rect.left-10)+'px';
+  f.style.top=(e.clientY-rect.top-24)+'px';
+  $('tapArea').appendChild(f); setTimeout(()=>f.remove(),700);
+});
+function updateBsRank(myScore,key){
+  const me={name:(state.currentUser?state.currentUser.name:'我'),me:true};
+  me[key]=myScore;
+  const top=[me,...getOpponents()].sort((a,b)=>b[key]-a[key]).slice(0,5);
+  $('bsGameRank').innerHTML=top.map((o,i)=>
+    `<li class="${o.me?'me':''}"><span><span class="no">${i+1}</span>${maskName(o.name)}</span><span>${o[key]}</span></li>`).join('');
+}
+function endTapGame(){
+  if(tapS.phase!=='play') return;
+  cancelAnimationFrame(tapS.raf); tapS.phase='end';
+  $('bsGamePanel').style.display='none';
+  // 服务端校验：平均 >15 次/秒判作弊，静默降档
+  const valid = tapS.count/(TAP_DURATION/1000) <= 15;
+  const score = valid ? tapS.count : Math.floor(tapS.count*0.6);
+  const rank = tapRankOf(score);
+  let reward = score>=80?3 : score>=50?2 : score>=30?1 : 0;
+  if(rank<=3) reward+=1;                       // 排名前三额外 +1
+  const u=state.currentUser;
+  if(reward>0) state.chances[u.id]=(state.chances[u.id]||0)+reward;
+  state.bestTap=Math.max(state.bestTap,tapS.count);
+  state.gameSessions.push({pid:u.id,type:'拼手速',score,chance:reward,valid});
+  $('tapFinalCount').textContent=tapS.count;
+  $('tapResRank').textContent=`最终排名第 ${rank} 名 / 共 ${getOpponents().length+1} 人`;
+  $('tapResReward').textContent = reward>0
+    ? `🎁 获得 ${reward} 次抽奖机会（含排名奖励）`
+    : '再快一点就能获得机会了（30 次起）';
+  $('tapResTitle').textContent = rank<=3 ? '🏆 手速惊人！' : '挑战结束';
+  $('tapResIcon').textContent = rank<=3 ? '🏆' : (reward>0?'🎉':'💪');
+  showTapScreen('tapResult');
+  renderAppHead(); renderAdmin();
+  toast(valid ? `本局 ${tapS.count} 次，排名第 ${rank}，获得 ${reward} 次机会！`
+              : `检测到异常点击，成绩按 ${score} 次折算`);
+}
+
+/* ---------- 摇一摇 ---------- */
+const SHAKE_DURATION=10000;
+let shakeS={phase:'idle',score:0,t0:0,raf:null,left:SHAKE_DURATION,lastAcc:0,lastShakeAt:0};
+function shakeRankOf(score){ return 1 + getOpponents().filter(o=>o.shake>=score).length; }
+function showShakeScreen(id){
+  ['shakeStart','shakePlay','shakeResult'].forEach(x=>$(x).classList.toggle('on',x===id));
+}
+$('btnShakeStart').addEventListener('click',startShakeGame);
+$('btnShakeAgain').addEventListener('click',startShakeGame);
+function startShakeGame(){
+  if(!state.currentUser){ toast('请先登录'); switchScreen('scan'); return; }
+  shakeS={phase:'play',score:0,t0:performance.now(),left:SHAKE_DURATION,lastAcc:0,lastShakeAt:0};
+  showShakeScreen('shakePlay');
+  $('shakeCount').textContent='0';
+  $('shakeLiveRank').textContent=shakeRankOf(0);
+  $('bsGamePanel').querySelector('h3').textContent='📱 摇一摇实时榜';
+  $('bsGamePanel').style.display='block';
+  const ring=$('shakeRing'), C=2*Math.PI*44;
+  ring.style.strokeDasharray=C; ring.style.strokeDashoffset=0;
+  // iOS 需用户手势申请动作传感器权限
+  if(typeof DeviceMotionEvent!=='undefined' && typeof DeviceMotionEvent.requestPermission==='function'){
+    DeviceMotionEvent.requestPermission()
+      .then(r=>{ if(r!=='granted') toast('未获传感器权限，可点「模拟摇动」参赛'); })
+      .catch(()=>toast('传感器权限申请失败，可点「模拟摇动」参赛'));
+  }
+  const loop=t=>{
+    if(shakeS.phase!=='play') return;
+    shakeS.left=Math.max(0,SHAKE_DURATION-(t-shakeS.t0));
+    $('shakeTimeLeft').textContent=(shakeS.left/1000).toFixed(1);
+    ring.style.strokeDashoffset=C*(1-shakeS.left/SHAKE_DURATION);
+    ring.style.stroke = shakeS.left<3000 ? '#e64533' : '#d4380d';
+    updateBsRank(shakeS.score,'shake');
+    if(shakeS.left<=0){ endShakeGame(); return; }
+    shakeS.raf=requestAnimationFrame(loop);
+  };
+  shakeS.raf=requestAnimationFrame(loop);
+}
+function addShake(power){
+  if(shakeS.phase!=='play') return;
+  const nowT=performance.now();
+  if(nowT-shakeS.lastShakeAt<80) return;          // 去抖：80ms 内连续晃动只计一次
+  shakeS.lastShakeAt=nowT;
+  shakeS.score+=power;
+  $('shakeCount').textContent=shakeS.score;
+  $('shakeLiveRank').textContent=shakeRankOf(shakeS.score);
+  const ph=$('shakePhone');
+  ph.classList.remove('hit'); void ph.offsetWidth; ph.classList.add('hit');
+  $('shakeBar').style.width=Math.min(100,shakeS.score/2.5)+'%';
+}
+// 真实传感器：加速度变化映射为振幅分
+window.addEventListener('devicemotion',e=>{
+  if(shakeS.phase!=='play') return;
+  const a=e.accelerationIncludingGravity; if(!a) return;
+  const mag=Math.sqrt((a.x||0)*(a.x||0)+(a.y||0)*(a.y||0)+(a.z||0)*(a.z||0));
+  const delta=Math.abs(mag-(shakeS.lastAcc||mag));
+  shakeS.lastAcc=mag;
+  if(delta>6) addShake(Math.min(12,Math.round(delta)));
+});
+// 桌面 / 无传感器设备：点击模拟摇动
+$('btnShakeSim').addEventListener('click',()=>addShake(8));
+function endShakeGame(){
+  if(shakeS.phase!=='play') return;
+  cancelAnimationFrame(shakeS.raf); shakeS.phase='end';
+  $('bsGamePanel').style.display='none';
+  // 服务端校验：振幅超过物理上限判作弊，静默折算
+  const valid = shakeS.score<=400;
+  const score = valid ? shakeS.score : Math.floor(shakeS.score*0.5);
+  const rank = shakeRankOf(score);
+  let reward = score>=220?3 : score>=120?2 : score>=50?1 : 0;
+  if(rank<=3) reward+=1;
+  const u=state.currentUser;
+  if(reward>0) state.chances[u.id]=(state.chances[u.id]||0)+reward;
+  state.bestShake=Math.max(state.bestShake||0,shakeS.score);
+  state.gameSessions.push({pid:u.id,type:'摇一摇',score,chance:reward,valid});
+  $('shakeFinal').textContent=shakeS.score;
+  $('shakeResRank').textContent=`最终排名第 ${rank} 名 / 共 ${getOpponents().length+1} 人`;
+  $('shakeResReward').textContent = reward>0
+    ? `🎁 获得 ${reward} 次抽奖机会（含排名奖励）`
+    : '再大力一点就能获得机会了（50 振幅起）';
+  $('shakeResTitle').textContent = rank<=3 ? '🏆 臂力惊人！' : '挑战结束';
+  $('shakeResIcon').textContent = rank<=3 ? '🏆' : (reward>0?'🎉':'💪');
+  showShakeScreen('shakeResult');
+  renderAppHead(); renderAdmin();
+  toast(valid ? `本局振幅 ${shakeS.score}，排名第 ${rank}，获得 ${reward} 次机会！`
+              : `检测到异常晃动，成绩按 ${score} 折算`);
+}
+
+/* ---------- 我的奖品 ---------- */
+function renderMyPrizes(){
+  const box=$('myPrizeList'), u=state.currentUser;
+  if(!u){ box.innerHTML='<div class="empty">请先登录</div>'; return; }
+  const mine=state.lotteryRecords.filter(r=>r.pid===u.id);
+  if(!mine.length){ box.innerHTML='<div class="empty">还没有中奖，去转盘试试运气～</div>'; return; }
+  box.innerHTML=mine.map(r=>`
+    <div class="prize-item">
+      <div class="pi">🎁</div>
+      <div style="flex:1"><div class="pt">${r.level?`<span class="tag r" style="margin-right:6px">${r.level}</span>`:''}${r.prize}</div>
+        <div class="pd">${r.time} · ${r.source}</div></div>
+      <div style="text-align:right">
+        <span class="redeem-code">${r.code}</span><br>
+        <span class="tag ${r.status==='待核销'?'a':'g'}">${r.status}</span></div>
+    </div>`).join('');
+}
+
+/* =====================================================
+   奖项选择器（滑动 / 点击 / 方向键选奖）
+===================================================== */
+function currentPrize(){
+  return state.prizes.find(x=>x.id===state.currentPrizeId)
+      || state.prizes.find(x=>x.stock>0) || null;
+}
+function prizeStatusText(){
+  const p=currentPrize();
+  if(!p) return '⚠️ 暂无可用奖品，请先到后台添加';
+  return `🎊 当前奖项：<b>${p.level||'参与奖'}</b> · ${p.name}（剩 ${p.stock}）`;
+}
+function renderPrizeCarousel(){
+  const track=$('prizeTrack'); if(!track) return;
+  if(!state.prizes.length){
+    track.innerHTML='<div style="color:#a99fc0;font-size:12px;padding:8px">暂无奖品，请到后台添加</div>';
+    return;
+  }
+  track.innerHTML=state.prizes.map(p=>{
+    const total=p.stock+p.won;
+    return `<div class="pcard ${p.id===state.currentPrizeId?'selected':''} ${p.stock<=0?'soldout':''}" data-id="${p.id}">
+      <span class="sel-tag">本轮抽奖</span>
+      ${p.stock<=0?'<span class="done">已抽完</span>':''}
+      <div class="pl">${p.level||'参与奖'}</div>
+      <div class="pn">${p.name}</div>
+      <div class="ps">剩余 <b>${p.stock}</b> / ${total}</div>
+    </div>`;
+  }).join('');
+  track.querySelectorAll('.pcard').forEach(c=>
+    c.addEventListener('click',()=>selectPrize(+c.dataset.id)));
+}
+function selectPrize(id,scroll=true){
+  state.currentPrizeId=id;
+  renderPrizeCarousel();
+  if(scroll){
+    const el=$('prizeTrack').querySelector('.pcard.selected');
+    if(el) el.scrollIntoView({behavior:'smooth',inline:'center',block:'nearest'});
+  }
+  const p=currentPrize();
+  if($('drawPrize')) $('drawPrize').value=String(id);
+  if($('btnStartRoll') && state.round.status!=='rolling')
+    $('btnStartRoll').textContent = p ? `开始抽奖 · ${p.level||'参与奖'}` : '开始抽奖';
+  if($('rollStatus') && state.round.status!=='rolling')
+    $('rollStatus').innerHTML = prizeStatusText()+' · 点击「开始抽奖」启动名单滚动';
+}
+function shiftPrize(d){
+  if(!state.prizes.length) return;
+  const i=state.prizes.findIndex(p=>p.id===state.currentPrizeId);
+  const n=(i+d+state.prizes.length)%state.prizes.length;
+  selectPrize(state.prizes[n].id);
+}
+$('ppPrev').addEventListener('click',()=>shiftPrize(-1));
+$('ppNext').addEventListener('click',()=>shiftPrize(1));
+document.addEventListener('keydown',e=>{
+  if(!$('screen-bigscreen').classList.contains('active')) return;
+  if(e.key==='ArrowLeft') shiftPrize(-1);
+  if(e.key==='ArrowRight') shiftPrize(1);
+});
+
+/* =====================================================
+   大屏抽奖
+===================================================== */
+let rollTimer=null;
+function renderRollGrid(highlightIdx){
+  const grid=$('rollGrid'), pool=state.participants.filter(p=>!p.isBlack);
+  let html='';
+  for(let i=0;i<12;i++){
+    const p=pool.length?pool[Math.floor(Math.random()*pool.length)]:null;
+    html+=`<div class="roll-cell ${highlightIdx===i?'hot':''}">
+      <div class="n">${p?maskName(p.name):'—'}</div><div class="d">${p?p.dept:''}</div></div>`;
+  }
+  grid.innerHTML=html;
+}
+renderRollGrid();
+
+function eligibleForDraw(){
+  const blackIds=state.participants.filter(p=>p.isBlack).map(p=>p.id);
+  return state.participants.filter(p=>!blackIds.includes(p.id));
+}
+$('btnStartRoll').addEventListener('click',startRoll);
+$('btnStopRoll').addEventListener('click',stopRoll);
+
+function startRoll(){
+  if(state.round.status==='rolling') return;
+  if(!eligibleForDraw().length){ toast('可抽奖名单为空'); return; }
+  const p=currentPrize();
+  if(!p || p.stock<=0){ toast('当前奖项已抽完，请滑动切换其他奖项'); return; }
+  state.round.status='rolling';
+  $('btnStartRoll').disabled=true; $('btnStopRoll').disabled=false;
+  $('rollStatus').innerHTML=`🎲 ${prizeStatusText()} · 名单滚动中，点击「停止」定格幸运儿`;
+  $('roundStatusTag') && ($('roundStatusTag').innerHTML='<span class="status-dot rolling"></span>滚动中');
+  rollTimer=setInterval(()=>renderRollGrid(Math.floor(Math.random()*12)),90);
+}
+function stopRoll(){
+  if(state.round.status!=='rolling') return;
+  clearInterval(rollTimer); state.round.status='idle';
+  $('btnStartRoll').disabled=false; $('btnStopRoll').disabled=true;
+  const count=Math.max(1,Math.min(10,parseInt($('drawCount')?.value||1)));
+  const pool=eligibleForDraw();
+  const prize=currentPrize();                     // 按当前选中奖项开奖
+  const winners=[];
+  const used=new Set();
+  for(let i=0;i<count;i++){
+    const cand=pool.filter(p=>!used.has(p.id));
+    if(!cand.length) break;
+    const w=pick(cand); used.add(w.id);
+    let got=null;
+    if(prize && prize.stock>0){ prize.stock--; prize.won++; got=prize; }
+    if(got){
+      const rec={ id:Date.now()+i, pid:w.id, name:w.name, dept:w.dept,
+                  level:got.level||'', prize:got.name,
+                  code:genCode(), status:'待核销', time:now(), source:'大屏池抽' };
+      state.lotteryRecords.push(rec); state.round.wins.push(rec);
+    }
+    winners.push({ name:w.name, dept:w.dept, prize:got?got.name:'谢谢参与',
+                   level:got?(got.level||''):'' });
+  }
+  showWinner(winners[0]);
+  // 奖项抽完后自动切换到下一个有库存的奖项
+  const next=state.prizes.find(p=>p.stock>0);
+  if(!next){
+    $('rollStatus').innerHTML='🏁 全部奖项已抽完，恭喜所有中奖者！';
+    $('btnStartRoll').textContent='奖品已全部抽完';
+  }else if(prize && prize.stock<=0){
+    selectPrize(next.id,false);
+    toast(`「${prize.level||prize.name}」已抽完，自动切换到「${next.level||next.name}」`);
+    $('rollStatus').innerHTML=prizeStatusText()+' · 点击「开始抽奖」启动名单滚动';
+  }else{
+    $('rollStatus').innerHTML=prizeStatusText()+' · 点击「开始抽奖」启动名单滚动';
+  }
+  renderWinnerFeed(); renderPrizeProgress(); renderAdmin();
+  $('roundStatusTag') && ($('roundStatusTag').innerHTML='<span class="status-dot idle"></span>待开始');
+}
+function showWinner(w){
+  $('wmName').textContent=w.name;
+  $('wmLevel').textContent=w.level||'';
+  $('wmLevel').style.display=w.level?'inline-block':'none';
+  $('wmPrize').textContent=w.prize==='谢谢参与'?'差一点点，明年再战！':'🎁 '+w.prize;
+  $('wmDept').textContent=w.dept;
+  $('winnerModal').classList.add('show');
+  if(w.prize!=='谢谢参与') fireConfetti();
+}
+$('wmClose').addEventListener('click',()=>$('winnerModal').classList.remove('show'));
+
+function renderWinnerFeed(){
+  const ul=$('winnerFeed');
+  const list=[...state.lotteryRecords].reverse().slice(0,30);
+  if(!list.length){ ul.innerHTML='<li class="muted" style="border:none">等待第一位幸运儿…</li>'; return; }
+  ul.innerHTML=list.map(r=>`<li><span class="w-name">${maskName(r.name)}</span>
+    <span class="w-prize">${r.level?r.level+' · ':''}${r.prize}<br><span class="muted">${r.time}</span></span></li>`).join('');
+}
+function renderPrizeProgress(){
+  const box=$('prizeProgress');
+  box.innerHTML=state.prizes.map(p=>{
+    const total=p.stock+p.won, pct=total?Math.round(p.won/total*100):0;
+    return `<div class="pp-row"><span>${p.level?'<b style="color:var(--gold)">'+p.level+'</b> · ':''}${p.name}</span><span>${p.won}/${total}</span></div>
+            <div class="pp-bar"><i style="width:${pct}%"></i></div>`;
+  }).join('');
+  renderPrizeCarousel();
+}
+renderPrizeProgress();
+selectPrize(state.currentPrizeId,false);
+
+/* ---------- 彩带 ---------- */
+const cf=$('confetti'), cfx=cf.getContext('2d');
+function resizeCF(){ cf.width=innerWidth; cf.height=innerHeight; }
+addEventListener('resize',resizeCF); resizeCF();
+let cfParts=[];
+function fireConfetti(){
+  const colors=['#f5b53f','#e64533','#2563eb','#0e8a5f','#6d43c8','#fff'];
+  for(let i=0;i<160;i++) cfParts.push({x:innerWidth/2+rnd(-160,160),y:innerHeight/3,
+    vx:rnd(-7,7),vy:rnd(-13,-4),g:.32,s:rnd(5,10),c:pick(colors),r:rnd(0,6),vr:rnd(-.3,.3),life:1});
+  if(!cf._run){ cf._run=true; requestAnimationFrame(cfLoop); }
+}
+function cfLoop(){
+  cfx.clearRect(0,0,cf.width,cf.height);
+  cfParts=cfParts.filter(p=>p.life>0);
+  cfParts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.vy+=p.g; p.r+=p.vr; p.life-=.008;
+    cfx.save(); cfx.translate(p.x,p.y); cfx.rotate(p.r); cfx.globalAlpha=Math.max(0,p.life);
+    cfx.fillStyle=p.c; cfx.fillRect(-p.s/2,-p.s/2,p.s,p.s*.6); cfx.restore(); });
+  if(cfParts.length) requestAnimationFrame(cfLoop); else cf._run=false;
+}
+
+/* =====================================================
+   管理后台
+===================================================== */
+document.querySelectorAll('.admin-nav button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.admin-nav button').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.admin-pane').forEach(p=>p.classList.remove('active'));
+  b.classList.add('active'); $(b.dataset.pane).classList.add('active');
+  renderAdmin();
+}));
+
+/* ---------- 活动配置 ---------- */
+(function initCfg(){
+  const a=state.activity;
+  $('cfgName').value=a.name; $('cfgRules').value=a.rules;
+  const pad=d=>d.toISOString().slice(0,16);
+  $('cfgStart').value=pad(new Date(Date.now()-3600000));
+  $('cfgEnd').value=pad(new Date(Date.now()+3*3600000));
+})();
+$('cfgBgFile').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{ $('cfgBgPreview').style.backgroundImage=`url(${rd.result})`;
+    $('cfgBgPreview').textContent=''; state.activity.bgUrl=rd.result;
+    $('bsBg').style.backgroundImage=`url(${rd.result})`; toast('背景图已上传并同步大屏'); };
+  rd.readAsDataURL(f);
+});
+$('btnSaveActivity').addEventListener('click',()=>{
+  state.activity.name=$('cfgName').value;
+  state.activity.rules=$('cfgRules').value;
+  state.activity.status=$('cfgStatus').value;
+  $('bsActivityName').textContent=state.activity.name;
+  $('posterTitle').textContent=state.activity.name.replace(/ ·.*/,'');
+  $('posterRules').innerHTML=state.activity.rules.replace(/\n/g,'<br>');
+  toast('✅ 配置已保存，大屏与扫码页已同步');
+});
+
+/* ---------- 奖品管理 ---------- */
+$('btnAddPrize').addEventListener('click',()=>{
+  const name=$('prName').value.trim(); if(!name){ toast('请填写奖品名称'); return; }
+  state.prizes.push({ id:Date.now(), name, level:$('prLevel').value.trim()||'参与奖',
+    stock:+$('prStock').value||1,
+    weight:+$('prWeight').value||10, limit:+$('prLimit').value||1, won:0 });
+  $('prName').value=''; $('prLevel').value=''; renderAdmin(); renderPrizeProgress(); toast('奖品已添加');
+});
+function delPrize(id){
+  if(state.lotteryRecords.some(r=>state.prizes.find(p=>p.id===id)?.name===r.prize)){ toast('该奖品已产生中奖记录，不可删除'); return; }
+  state.prizes=state.prizes.filter(p=>p.id!==id);
+  if(state.currentPrizeId===id) state.currentPrizeId=state.prizes[0]?state.prizes[0].id:null;
+  renderAdmin(); renderPrizeProgress(); selectPrize(state.currentPrizeId,false);
+}
+
+/* ---------- 人员名单 ---------- */
+$('btnGen50').addEventListener('click',()=>{ state.participants=genParticipants(50); state.tapOpponents=null; renderAdmin(); toast('已生成 50 条模拟名单'); });
+$('btnImport').addEventListener('click',()=>{
+  const lines=$('importText').value.trim().split('\n').filter(Boolean);
+  let ok=0,fail=0;
+  lines.forEach(l=>{
+    const [name,dept,phone]=l.split(/[,，\t]/).map(s=>s?.trim());
+    if(name&&dept){ state.participants.push({id:Date.now()+Math.random(),name,dept,phone:phone||'—',isWhite:false,isBlack:false,chance:0}); ok++; }
+    else fail++;
+  });
+  $('importText').value=''; state.tapOpponents=null; renderAdmin();
+  toast(`导入完成：成功 ${ok} 条${fail?`，失败 ${fail} 条（缺少姓名/部门）`:''}`);
+});
+function toggleFlag(id,field){
+  const p=state.participants.find(x=>x.id===id); if(p) p[field]=!p[field];
+  renderAdmin();
+}
+
+/* ---------- 抽奖控制 ---------- */
+$('drawPrize').addEventListener('change',e=>selectPrize(+e.target.value,false));
+$('btnAdminStart').addEventListener('click',()=>{ startRoll(); });
+$('btnAdminStop').addEventListener('click',()=>{ stopRoll(); });
+$('btnAdminReset').addEventListener('click',()=>{
+  if(state.round.status==='rolling'){ clearInterval(rollTimer); state.round.status='idle';
+    $('btnStartRoll').disabled=false; $('btnStopRoll').disabled=true; }
+  state.round.wins=[]; renderAdmin(); toast('场次已重置');
+});
+$('btnManual').addEventListener('click',()=>{
+  const pid=+$('manualWinner').value;
+  const p=state.participants.find(x=>x.id===pid);
+  if(!p||!p.isWhite){ toast('仅可指定白名单成员（在名单中先设白名单）'); return; }
+  const avail=state.prizes.filter(x=>x.stock>0);
+  if(!avail.length){ toast('奖品已全部售罄'); return; }
+  const prize=(currentPrize()&&currentPrize().stock>0)?currentPrize():avail[0];
+  prize.stock--; prize.won++;
+  const rec={id:Date.now(),pid:p.id,name:p.name,dept:p.dept,level:prize.level||'',prize:prize.name,code:genCode(),
+    status:'待核销',time:now(),source:'手动指定'};
+  state.lotteryRecords.push(rec); state.round.wins.push(rec);
+  showWinner({name:p.name,dept:p.dept,prize:prize.name,level:prize.level||''});
+  renderAdmin(); renderPrizeProgress(); renderWinnerFeed();
+  toast('已按白名单手动指定中奖（已记审计日志）');
+});
+
+/* ---------- 中奖记录 ---------- */
+function redeem(id){
+  const r=state.lotteryRecords.find(x=>x.id===id);
+  if(!r||r.status!=='待核销') return;
+  r.status='已核销'; renderAdmin(); renderMyPrizes();
+  toast(`✅ ${maskName(r.name)} 的「${r.prize}」核销成功`);
+}
+$('btnExport').addEventListener('click',()=>{
+  const rows=[['姓名','部门','奖项','奖品','核销码','状态','时间'],
+    ...state.lotteryRecords.map(r=>[r.name,r.dept,r.level||'',r.prize,r.code,r.status,r.time])];
+  const csv='\uFEFF'+rows.map(r=>r.join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download='中奖记录.csv'; a.click();
+  toast('中奖记录已导出 CSV');
+});
+
+/* =====================================================
+   渲染：管理后台
+===================================================== */
+function renderAdmin(){
+  // KPI
+  $('kpiPv').textContent=state.pv;
+  $('kpiParticipants').textContent=state.participants.length;
+  $('kpiGames').textContent=state.gameSessions.length;
+  $('kpiWins').textContent=state.lotteryRecords.length;
+  // 奖品表
+  $('prizeTable').innerHTML=state.prizes.map(p=>`<tr>
+    <td><span class="tag r">${p.level||'参与奖'}</span></td><td>${p.name}</td><td>${p.stock}</td><td>${p.weight}</td><td>${p.limit}</td>
+    <td>${p.won}</td><td><button class="btn btn-ghost btn-sm" onclick="delPrize(${p.id})">删除</button></td>
+  </tr>`).join('')||'<tr><td colspan="7" class="muted" style="text-align:center">暂无奖品</td></tr>';
+  // 后台奖项下拉（与大屏同步）
+  const dp=$('drawPrize');
+  if(dp) dp.innerHTML=state.prizes.map(p=>
+    `<option value="${p.id}" ${p.id===state.currentPrizeId?'selected':''}>${p.level||'参与奖'} · ${p.name}（剩 ${p.stock}）</option>`).join('')
+    ||'<option value="">暂无奖品</option>';
+  // 名单表
+  $('peopleTotal').textContent=state.participants.length;
+  $('blackTotal').textContent=state.participants.filter(p=>p.isBlack).length;
+  $('peopleTable').innerHTML=state.participants.slice(0,60).map(p=>`<tr>
+    <td>${p.name}</td><td>${p.dept}</td><td>${p.phone}</td><td>${state.chances[p.id]||0}</td>
+    <td>${p.isWhite?'<span class="tag b">白名单</span>':'—'} ${p.isBlack?'<span class="tag r">黑名单</span>':''}</td>
+    <td><button class="btn btn-ghost btn-sm" onclick="toggleFlag(${p.id},'isWhite')">白</button>
+        <button class="btn btn-ghost btn-sm" onclick="toggleFlag(${p.id},'isBlack')">黑</button></td>
+  </tr>`).join('');
+  // 手动指定下拉
+  const sel=$('manualWinner');
+  const whites=state.participants.filter(p=>p.isWhite);
+  sel.innerHTML=whites.map(p=>`<option value="${p.id}">${p.name}（${p.dept}）</option>`).join('')
+    ||'<option value="">暂无白名单成员</option>';
+  // 本场已中奖
+  $('roundWinTable').innerHTML=state.round.wins.map(r=>`<tr>
+    <td>${r.name}</td><td>${r.dept}</td><td>${r.level?`<span class="tag r">${r.level}</span>`:'—'}</td><td>${r.prize}</td><td>${r.time}</td></tr>`).join('')
+    ||'<tr><td colspan="5" class="muted" style="text-align:center">本场还未开奖</td></tr>';
+  // 中奖记录
+  $('recordTotal').textContent=state.lotteryRecords.length;
+  $('recordPending').textContent=state.lotteryRecords.filter(r=>r.status==='待核销').length;
+  $('recordTable').innerHTML=[...state.lotteryRecords].reverse().map(r=>`<tr>
+    <td>${maskName(r.name)}</td><td>${r.dept}</td><td>${r.level?`<span class="tag r">${r.level}</span>`:'—'}</td><td>${r.prize}</td>
+    <td><span class="redeem-code">${r.code}</span></td>
+    <td><span class="tag ${r.status==='待核销'?'a':'g'}">${r.status}</span></td>
+    <td>${r.status==='待核销'?`<button class="btn btn-green btn-sm" onclick="redeem(${r.id})">核销</button>`:'—'}</td>
+  </tr>`).join('')||'<tr><td colspan="7" class="muted" style="text-align:center">暂无中奖记录</td></tr>';
+  drawFunnel(); drawOnline();
+}
+
+/* ---------- 图表 ---------- */
+function setupCanvas(c){
+  const dpr=devicePixelRatio||1, w=c.clientWidth, h=+c.getAttribute('height');
+  c.width=w*dpr; c.height=h*dpr; const x=c.getContext('2d'); x.scale(dpr,dpr);
+  return {x,w,h};
+}
+function drawFunnel(){
+  const c=$('funnelChart'); if(!c) return; const {x,w,h}=setupCanvas(c);
+  const stages=[['扫码',state.pv,'#2563eb'],['登录',Math.round(state.pv*0.82),'#0e8a5f'],
+    ['玩游戏',state.gameSessions.length,'#c08a1e'],['中奖',state.lotteryRecords.length,'#d4380d']];
+  const max=Math.max(...stages.map(s=>s[1]),1);
+  stages.forEach((s,i)=>{
+    const y=14+i*(h-28)/4, bw=Math.max(30,s[1]/max*(w-190));
+    x.fillStyle=s[2]; x.globalAlpha=.85;
+    x.beginPath(); x.roundRect(60,y,bw,26,6); x.fill(); x.globalAlpha=1;
+    x.fillStyle='#1f2329'; x.font='12px sans-serif'; x.textAlign='left';
+    x.fillText(`${s[0]}  ${s[1]}`,60+bw+10,y+17);
+    x.textAlign='right'; x.fillStyle='#4a5160';
+    x.fillText(max?Math.round(s[1]/stages[0][1]*100)+'%':0,w,y+17);
+  });
+}
+const onlineHist=Array(30).fill(0).map(()=>300+Math.floor(Math.random()*120));
+setInterval(()=>{
+  state.online=Math.max(120,state.online+Math.floor(rnd(-18,20)));
+  onlineHist.push(state.online); onlineHist.shift();
+  $('bsOnline').textContent=state.online;
+  if($('screen-admin').classList.contains('active')&&$('pane-dash').classList.contains('active')) drawOnline();
+},1500);
+function drawOnline(){
+  const c=$('onlineChart'); if(!c) return; const {x,w,h}=setupCanvas(c);
+  const max=Math.max(...onlineHist)*1.15, min=Math.min(...onlineHist)*.85;
+  x.strokeStyle='#d4380d'; x.lineWidth=2; x.beginPath();
+  onlineHist.forEach((v,i)=>{ const px=i/(onlineHist.length-1)*w, py=h-6-(v-min)/(max-min)*(h-20);
+    i?x.lineTo(px,py):x.moveTo(px,py); });
+  x.stroke();
+  const grad=x.createLinearGradient(0,0,0,h); grad.addColorStop(0,'rgba(212,56,13,.25)'); grad.addColorStop(1,'rgba(212,56,13,0)');
+  x.lineTo(w,h); x.lineTo(0,h); x.closePath(); x.fillStyle=grad; x.fill();
+  x.fillStyle='#8a909c'; x.font='11px sans-serif'; x.textAlign='left';
+  x.fillText('当前在线 '+state.online+' 人',8,14);
+}
+
+renderAdmin();
+$('bsOnline').textContent=state.online;
+</script>
+</body>
+</html>
