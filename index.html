@@ -347,7 +347,8 @@
     <button class="tab" data-screen="admin">⚙️ 管理后台</button>
   </nav>
   <button class="btn-full" id="btnFullscreen">⛶ 全屏</button>
-  <span class="hint">交互原型 V1.11 · 数据为模拟</span>
+  <span class="hint">交互原型 V1.12 · 数据为模拟</span>
+  <span class="hint" id="syncBadge" style="margin-left:10px">检测中…</span>
 </header>
 
 <!-- ==================== 大屏抽奖 ==================== -->
@@ -836,12 +837,107 @@ if(!hasSavedState){                                    // 无本地数据才生�
   initChances(state.participants);          // 每人 1 次基础抽奖机会
 }
 
+/* ---------- 服务端模式：与 Node 服务端共享数据，实现跨设备同步 ----------
+   页面通过本机 Node 服务打开时走服务端（手机 / 大屏 / 后台同一份数据）；
+   直接双击打开（file://）或 GitHub Pages 时自动退回本地存储模式。      */
+const SYNC_POLL=2500;
+let serverMode=false, adminToken=localStorage.getItem('mk_at')||sessionStorage.getItem('mk_at')||'', lastVersion=0, pollingBusy=false;
+
+function setSyncBadge(text,ok){
+  const b=$('syncBadge'); if(!b) return;
+  b.textContent=text; b.style.color=ok?'var(--green)':'var(--ink3)';
+}
+async function api(path,body,needAuth){
+  if(!serverMode) return null;
+  try{
+    const res=await fetch('/api/'+path,{
+      method:'POST',
+      headers:Object.assign({'Content-Type':'application/json'},
+        needAuth&&adminToken?{'x-admin-token':adminToken}:{}),
+      body:JSON.stringify(body||{})});
+    let j={}; try{ j=await res.json(); }catch(e){}
+    if(!res.ok||!j.ok){
+      toast(j.msg||'云端操作失败');
+      if(res.status===401){ adminToken=''; localStorage.removeItem('mk_at'); sessionStorage.removeItem('mk_at'); adminLoggedIn=false; updateAdminAuth(); }
+      return null;
+    }
+    if(j.state) applyServerState(j.state,j.version);
+    return j;
+  }catch(e){ toast('网络异常，本次操作未同步'); return null; }
+}
+function applyServerState(st,version){
+  if(!st) return;
+  const wasRolling = state.round && state.round.status==='rolling';   // 本地正在滚动则保留滚动态
+  Object.assign(state,st);
+  state.round={ status: wasRolling?'rolling':'idle', wins:(st.round&&st.round.wins)||[] };
+  if(typeof version==='number') lastVersion=version;
+  state.tapOpponents=null;
+  // 名单被服务端整体替换后，currentUser 会变成「幽灵引用」（指向旧对象）
+  // → 重新绑定到新对象；若该成员已被删除/拉黑，则退出登录态
+  if(state.currentUser){
+    const alive=(st.participants||[]).find(x=>x.id===state.currentUser.id && !x.isBlack);
+    if(alive) state.currentUser=alive;
+    else { state.currentUser=null; resetAppHead(); }
+  }
+  refreshActivityUI();
+  renderRollGrid(); renderAdmin(); renderAppHead();
+  renderPrizeProgress(); renderWinnerFeed(); refreshBsPart();
+}
+/* 清空移动端登录态（当前用户被删除/拉黑时调用） */
+function resetAppHead(){
+  $('appAvatar').textContent='?'; $('appName').textContent='未登录'; $('appDept').textContent='—';
+  $('appChance').textContent='0'; $('homeChance').textContent='0'; $('homePlays').textContent='0';
+  $('homeSignup').style.display='block';
+  gotoView('view-home');
+}
+function refreshActivityUI(){
+  const a=state.activity; if(!a) return;
+  const bs=$('bsActivityName'); if(bs) bs.textContent=a.name;
+  const pt=$('posterTitle'); if(pt) pt.textContent=String(a.name).replace(/ ·.*/,'');
+  const pr=$('posterRules'); if(pr) pr.innerHTML=esc(a.rules).replace(/\n/g,'<br>');
+  const cn=$('cfgName'), cr=$('cfgRules'), cs=$('cfgStatus');
+  if(cn&&cn!==document.activeElement) cn.value=a.name;
+  if(cr&&cr!==document.activeElement) cr.value=a.rules;
+  if(cs&&cs!==document.activeElement) cs.value=a.status;
+}
+async function pollServer(){
+  if(!serverMode||pollingBusy) return;
+  pollingBusy=true;
+  try{
+    const r=await fetch('/api/state?since='+lastVersion,{cache:'no-store'});
+    const j=await r.json();
+    if(j.ok&&j.changed) applyServerState(j.state,j.version);
+  }catch(e){ /* 网络抖动：下一轮重试 */ }
+  pollingBusy=false;
+}
+async function probeServer(){
+  if(!/^https?:$/.test(location.protocol)){
+    setSyncBadge('本地模式（直接打开文件，数据存本机）',false);
+    return;
+  }
+  try{
+    const r=await fetch('/api/health',{cache:'no-store'});
+    if(!r.ok) throw 0;
+    const j=await r.json();
+    if(!j.ok) throw 0;
+    serverMode=true;
+    setSyncBadge('☁ 已连接服务端 · 多设备共享数据',true);
+    const s=await fetch('/api/state?since=0',{cache:'no-store'});
+    const sj=await s.json();
+    if(sj.ok&&sj.changed) applyServerState(sj.state,sj.version);
+    setInterval(pollServer,SYNC_POLL);
+  }catch(e){
+    serverMode=false;
+    setSyncBadge('本地模式（未连接服务端）',false);
+  }
+}
+
 /* ---------- 抽奖机会 ---------- */
 function initChances(list){ list.forEach(p=>{ state.chances[p.id]=1; p.chance=1; }); }
 function grantChances(pid,n){ state.chances[pid]=(state.chances[pid]||0)+n; }
 function consumeChance(pid){ state.chances[pid]=Math.max(0,(state.chances[pid]||0)-1); }
 function chanceOf(pid){ return state.chances[pid]||0; }
-function grantOne(pid){ grantChances(pid,1); const p=state.participants.find(x=>x.id===pid); if(p) p.chance=chanceOf(pid); renderAdmin(); renderAppHead(); toast(`已为 ${p?p.name:'该成员'} 补充 1 次抽奖机会`); }
+function grantOne(pid){ grantChances(pid,1); const p=state.participants.find(x=>x.id===pid); if(p) p.chance=chanceOf(pid); renderAdmin(); renderAppHead(); toast(`已为 ${p?p.name:'该成员'} 补充 1 次抽奖机会`); if(serverMode) api('admin/patch',{id:pid,patch:{chance:1}},true); }
 
 /* ---------- 工具 ---------- */
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show');
@@ -884,8 +980,20 @@ function updateAdminAuth(){
   $('adminLogin').classList.toggle('hide', adminLoggedIn);
   $('adminAuthBar').classList.toggle('is-in', adminLoggedIn);
 }
-$('btnAdminLogin').addEventListener('click',()=>{
+$('btnAdminLogin').addEventListener('click',async()=>{
   const u=$('alUser').value.trim(), p=$('alPass').value;
+  if(serverMode){                                   // 服务端校验账号密码并下发管理令牌
+    const r=await api('admin/login',{user:u,pass:p});
+    if(!r||!r.token){                               // api() 已提示错误原因
+      const box=$('adminLogin');
+      box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake');
+      return;
+    }
+    adminToken=r.token; localStorage.setItem('mk_at',adminToken); sessionStorage.setItem('mk_at',adminToken);
+    adminLoggedIn=true; sessionStorage.setItem('mk_admin','1');
+    updateAdminAuth(); renderAdmin(); toast('✅ 登录成功，欢迎进入管理后台');
+    return;
+  }
   if(u===ADMIN_USER && p===ADMIN_PASS){
     adminLoggedIn=true; sessionStorage.setItem('mk_admin','1');
     updateAdminAuth(); renderAdmin(); toast('✅ 登录成功，欢迎进入管理后台');
@@ -1123,6 +1231,15 @@ $('btnWxLogin').addEventListener('click',()=>login('微信授权'));
 $('btnPhoneLogin').addEventListener('click',()=>login('手机号验证码'));
 
 function login(way){
+  if(serverMode){                                   // 服务端为准（随机选一位可抽奖成员）
+    api('login').then(r=>{
+      if(!r||!r.pid) return;
+      state.currentUser=state.participants.find(p=>p.id===r.pid)||null;
+      toast(`✅ ${way}登录成功，当前有 ${chanceOf(r.pid)} 次抽奖机会`);
+      switchScreen('mobile'); renderAppHead();
+    });
+    return;
+  }
   const eligible=state.participants.filter(p=>!p.isBlack);
   if(!eligible.length){ toast('名单为空，请先报名或让后台导入人员'); return; }
   state.currentUser = pick(eligible);
@@ -1152,6 +1269,7 @@ function doSignup(){
   const phone=$('suPhone').value.trim();
   if(!name){ toast('请填写姓名'); return; }
   if(!/^1\d{10}$/.test(phone)){ toast('请填写 11 位有效手机号'); return; }
+  if(serverMode){ signupViaServer(name,dept,phone); return; }   // 服务端为准（查重/黑名单/机会）
   const exist=state.participants.find(p=>p.phone===phone);
   if(exist){
     if(exist.isBlack){ toast('该手机号已被列入黑名单，无法参与'); return; }
@@ -1170,6 +1288,19 @@ function doSignup(){
   state.pv++;                                    // 扫码 PV 实时累计
   showPoster('main');
   renderAppHead(); renderAdmin(); renderRollGrid();
+  switchScreen('mobile'); gotoView('view-home');
+}
+/* 服务端模式报名：以服务端判定为准（查重 / 黑名单 / 发放机会） */
+async function signupViaServer(name,dept,phone){
+  const r=await api('signup',{name,dept,phone});
+  if(!r||!r.person){ return; }                    // 失败时 api() 已提示原因
+  state.currentUser=state.participants.find(p=>p.id===r.person.id)||null;
+  $('suName').value=''; $('suPhone').value='';
+  toast(r.returning
+    ? `欢迎回来，${r.person.name}！当前有 ${chanceOf(r.person.id)} 次抽奖机会`
+    : '🎉 报名成功！已赠送 1 次抽奖机会');
+  showPoster('main');
+  renderAppHead();
   switchScreen('mobile'); gotoView('view-home');
 }
 
@@ -1292,6 +1423,7 @@ function endTapGame(){
   $('tapResIcon').textContent = rank<=3 ? '🏆' : (reward>0?'🎉':'💪');
   showTapScreen('tapResult');
   renderAppHead(); renderAdmin();
+  if(serverMode) api('game',{pid:u.id,type:'拼手速',score:score,reward:reward});
   toast(valid ? `本局 ${tapS.count} 次，排名第 ${rank}，获得 ${reward} 次机会！`
               : `检测到异常点击，成绩按 ${score} 次折算`);
 }
@@ -1379,6 +1511,7 @@ function endShakeGame(){
   $('shakeResIcon').textContent = rank<=3 ? '🏆' : (reward>0?'🎉':'💪');
   showShakeScreen('shakeResult');
   renderAppHead(); renderAdmin();
+  if(serverMode) api('game',{pid:u.id,type:'摇一摇',score:score,reward:reward});
   toast(valid ? `本局振幅 ${shakeS.score}，排名第 ${rank}，获得 ${reward} 次机会！`
               : `检测到异常晃动，成绩按 ${score} 折算`);
 }
@@ -1445,6 +1578,8 @@ function selectPrize(id,scroll=true){
   if($('rollStatus') && state.round.status!=='rolling')
     $('rollStatus').innerHTML = prizeStatusText()+' · 点击「开始抽奖」启动名单滚动';
   saveState();                                          // 当前奖项选择 → 落盘
+  clearTimeout(selectPrize._tm);
+  if(serverMode) selectPrize._tm=setTimeout(()=>api('admin/select',{prizeId:id},true),400);  // 同步给服务端
 }
 function shiftPrize(d){
   if(!state.prizes.length) return;
@@ -1493,8 +1628,12 @@ function prizeLimitOk(p,prize){
 $('btnStartRoll').addEventListener('click',startRoll);
 $('btnStopRoll').addEventListener('click',stopRoll);
 
-function startRoll(){
+async function startRoll(){
   if(state.round.status==='rolling') return;
+  if(serverMode){                                  // 先拉服务端最新状态，避免用过期名单判断能否开奖
+    const r=await fetch('/api/state?since=0',{cache:'no-store'});
+    try{ const j=await r.json(); if(j.ok&&j.changed) applyServerState(j.state,j.version); }catch(e){}
+  }
   if(!eligibleForDraw().length){
     toast(state.participants.filter(p=>!p.isBlack).length
       ? '名单中无人还有抽奖机会，提醒学员玩游戏赚机会，或在后台补充'
@@ -1509,37 +1648,53 @@ function startRoll(){
   $('roundStatusTag') && ($('roundStatusTag').innerHTML='<span class="status-dot rolling"></span>滚动中');
   rollTimer=setInterval(()=>renderRollGrid(Math.floor(Math.random()*12)),90);
 }
+/* 奖项抽完后按「数组顺序」递进到下一个有库存的奖项（不跳回更高奖项） */
+function nextPrizeWithStock(prizes,currentId){
+  const i=prizes.findIndex(p=>p.id===currentId);
+  if(i<0) return prizes.find(p=>p.stock>0)||null;
+  for(let k=1;k<=prizes.length;k++){
+    const c=prizes[(i+k)%prizes.length];
+    if(c.stock>0) return c;
+  }
+  return null;
+}
 function stopRoll(){
   if(state.round.status!=='rolling') return;
   clearInterval(rollTimer); state.round.status='idle';
   $('btnStartRoll').disabled=false; $('btnStopRoll').disabled=true;
   const count=Math.max(1,Math.min(10,parseInt($('drawCount')?.value||1)));
+  if(serverMode){ stopRollViaServer(count); return; }   // 服务端权威开奖，避免多端重复中奖
   const pool=eligibleForDraw();
-  const prize=currentPrize();                     // 按当前选中奖项开奖
+  let prize=currentPrize();                       // 按当前选中奖项开奖
+  if(!prize || prize.stock<=0) prize=nextPrizeWithStock(state.prizes,prize?prize.id:state.currentPrizeId); // 已抽完则顺延，不白耗机会
+  if(!prize){ toast('所有奖品都已抽完'); return; }
   const winners=[];
   const used=new Set();
   for(let i=0;i<count;i++){
+    // 一次抽多个时，库存可能在循环中途耗尽 → 顺延到下一个有库存的奖项（不白耗机会）
+    if(!prize || prize.stock<=0){
+      const nxt=nextPrizeWithStock(state.prizes,prize?prize.id:state.currentPrizeId);
+      if(!nxt) break;                       // 所有奖项已抽完 → 停止，不消耗机会
+      prize=nxt;
+    }
     const cand=pool.filter(p=>!used.has(p.id) && prizeLimitOk(p,prize));
     if(!cand.length) break;
     const w=pick(cand); used.add(w.id);
-    let got=null;
-    if(prize && prize.stock>0){ prize.stock--; prize.won++; got=prize; }
-    if(got){
-      const rec={ id:Date.now()+i, pid:w.id, prizeId:got.id, name:w.name, dept:w.dept,
-                  level:got.level||'', prize:got.name,
-                  code:genCode(), status:'待核销', time:now(), source:'大屏池抽' };
-      state.lotteryRecords.push(rec); state.round.wins.push(rec);
-    }
+    const got=prize;
+    prize.stock--; prize.won++;
+    const rec={ id:Date.now()+i, pid:w.id, prizeId:got.id, name:w.name, dept:w.dept,
+                level:got.level||'', prize:got.name,
+                code:genCode(), status:'待核销', time:now(), source:'大屏池抽' };
+    state.lotteryRecords.push(rec); state.round.wins.push(rec);
     consumeChance(w.id);                          // 每开奖 1 次消耗 1 次机会
-    const win={ name:w.name, dept:w.dept, prize:got?got.name:'谢谢参与',
-                level:got?(got.level||''):'' };
+    const win={ name:w.name, dept:w.dept, prize:got.name, level:got.level||'' };
     if(state.currentUser && w.id===state.currentUser.id) win.chanceLeft=chanceOf(w.id);
     winners.push(win);
   }
   if(winners.length) showWinner(winners[0]);
   else toast('本场没有符合条件的中奖者（机会已用完或已达每人限中上限）');
-  // 奖项抽完后自动切换到下一个有库存的奖项
-  const next=state.prizes.find(p=>p.stock>0);
+  // 奖项抽完后自动切换到下一个有库存的奖项（按顺序递进，不跳回高奖项）
+  const next=nextPrizeWithStock(state.prizes,prize?prize.id:state.currentPrizeId);
   if(!next){
     $('rollStatus').innerHTML='🏁 全部奖项已抽完，恭喜所有中奖者！';
     $('btnStartRoll').textContent='奖品已全部抽完';
@@ -1551,6 +1706,31 @@ function stopRoll(){
     $('rollStatus').innerHTML=prizeStatusText()+' · 点击「开始抽奖」启动名单滚动';
   }
   renderWinnerFeed(); renderPrizeProgress(); renderAdmin(); renderAppHead();
+  $('roundStatusTag') && ($('roundStatusTag').innerHTML='<span class="status-dot idle"></span>待开始');
+}
+/* 服务端模式开奖：以服务端结果为准（机会扣减 / 中奖记录 / 库存只写一次） */
+async function stopRollViaServer(count){
+  const r=await api('admin/draw',{count:count},true);
+  if(!r){                                        // api() 已提示原因；补一条明确指引
+    $('rollStatus').innerHTML='⚠️ 开奖未生效：'+(adminToken?'':'请先在「后台管理」登录（同一浏览器标签页会自动共享登录态）');
+    pollServer(); return;
+  }
+  const winners=r.winners||[];
+  if(winners.length){
+    showWinner(winners[0]);          // winners[0].chanceLeft 来自服务端，弹窗会显示剩余机会
+  }else{
+    toast('本场没有符合条件的中奖者（机会已用完或已达每人限中上限）');
+  }
+  const prize=currentPrize();
+  const next=nextPrizeWithStock(state.prizes,prize?prize.id:state.currentPrizeId);
+  if(!next){
+    $('rollStatus').innerHTML='🏁 全部奖项已抽完，恭喜所有中奖者！';
+    $('btnStartRoll').textContent='奖品已全部抽完';
+  }else{
+    $('rollStatus').innerHTML=prizeStatusText()+' · 点击「开始抽奖」启动名单滚动';
+    if(prize && prize.stock<=0) toast(`「${prize.level||prize.name}」已抽完，已自动切换奖项`);
+  }
+  renderWinnerFeed(); renderPrizeProgress(); renderAdmin(); renderAppHead(); refreshBsPart();
   $('roundStatusTag') && ($('roundStatusTag').innerHTML='<span class="status-dot idle"></span>待开始');
 }
 function showWinner(w){
@@ -1672,7 +1852,7 @@ window.addEventListener('storage',e=>{
 });
 /* 同一浏览器其他标签页改动名单 / 奖品 / 开奖时实时同步（如一个标签投大屏、一个标签管后台） */
 window.addEventListener('storage',e=>{
-  if(e.key!==STATE_KEY) return;
+  if(e.key!==STATE_KEY || serverMode) return;                      // 服务端模式下以服务端为准
   if(!e.newValue){ location.reload(); return; }               // 其他标签恢复了初始数据 → 本标签同步重载
   if(rollTimer){ clearInterval(rollTimer); rollTimer=null; }        // 中断本标签的滚动，避免状态错位
   if(state.round.status==='rolling'){
@@ -1695,22 +1875,25 @@ $('btnSaveActivity').addEventListener('click',()=>{
   $('posterTitle').textContent=state.activity.name.replace(/ ·.*/,'');
   $('posterRules').innerHTML=esc(state.activity.rules).replace(/\n/g,'<br>');
   saveState();
+  if(serverMode) api('admin/config',{name:state.activity.name,rules:state.activity.rules,status:state.activity.status},true);
   toast('✅ 配置已保存，大屏与扫码页已同步');
 });
 
 /* ---------- 奖品管理 ---------- */
 $('btnAddPrize').addEventListener('click',()=>{
   const name=$('prName').value.trim(); if(!name){ toast('请填写奖品名称'); return; }
-  state.prizes.push({ id:Date.now(), name, level:$('prLevel').value.trim()||'参与奖',
-    stock:+$('prStock').value||1,
-    weight:+$('prWeight').value||10, limit:+$('prLimit').value||1, won:0 });
+  const payload={ name, level:$('prLevel').value.trim()||'参与奖',
+    stock:+$('prStock').value||1, weight:+$('prWeight').value||10, limit:+$('prLimit').value||1 };
+  state.prizes.push({ id:Date.now(), ...payload, won:0 });
   $('prName').value=''; $('prLevel').value=''; renderAdmin(); renderPrizeProgress(); toast('奖品已添加');
+  if(serverMode) api('admin/prize',Object.assign({op:'add'},payload),true);
 });
 function delPrize(id){
   if(state.lotteryRecords.some(r=>r.prizeId===id)){ toast('该奖品已产生中奖记录，不可删除'); return; }
   state.prizes=state.prizes.filter(p=>p.id!==id);
   if(state.currentPrizeId===id) state.currentPrizeId=state.prizes[0]?state.prizes[0].id:null;
   renderAdmin(); renderPrizeProgress(); selectPrize(state.currentPrizeId,false); saveState();
+  if(serverMode) api('admin/prize',{op:'delete',id:id},true);
 }
 
 /* ---------- 人员名单 ---------- */
@@ -1718,6 +1901,7 @@ $('btnGen50').addEventListener('click',()=>{
   if(!confirm('将覆盖当前全部名单与抽奖机会，重新生成 50 条模拟数据，确定吗？')) return;
   state.participants=genParticipants(50); state.chances={}; initChances(state.participants); state.tapOpponents=null;
   renderRollGrid(); renderAdmin(); toast('已生成 50 条模拟名单（每人 1 次机会）');
+  if(serverMode) api('admin/gen50',{},true);
 });
 $('btnGrantAll').addEventListener('click',()=>{
   const list=state.participants.filter(p=>!p.isBlack);
@@ -1726,10 +1910,12 @@ $('btnGrantAll').addEventListener('click',()=>{
   list.forEach(p=>{ grantChances(p.id,1); p.chance=chanceOf(p.id); });
   renderAdmin(); renderAppHead();
   toast(`已为 ${list.length} 人各补充 1 次抽奖机会`);
+  if(serverMode) api('admin/patch',{ids:list.map(p=>p.id),patch:{chance:1}},true);
 });
 $('btnImport').addEventListener('click',()=>{
   const lines=$('importText').value.trim().split('\n').filter(Boolean);
   let ok=0,fail=0,dup=0;
+  const rows=[];
   const phones=new Set(state.participants.map(p=>p.phone).filter(x=>x&&x!=='—'));   // 手机号查重
   lines.forEach(l=>{
     const [name,dept,phone]=l.split(/[,，\t]/).map(s=>s?.trim());
@@ -1737,15 +1923,19 @@ $('btnImport').addEventListener('click',()=>{
       if(phone&&phones.has(phone)){ dup++; return; }                    // 已存在的手机号跳过
       const p={id:Date.now()+Math.random(),name,dept,phone:phone||'—',isWhite:false,isBlack:false,chance:1,source:'后台导入'};
       state.participants.push(p); state.chances[p.id]=1; if(phone) phones.add(phone); ok++;
+      rows.push({name,dept,phone:phone||'—'});
     }
     else fail++;
   });
   $('importText').value=''; state.tapOpponents=null; renderRollGrid(); renderAdmin();
   toast(`导入完成：成功 ${ok} 条${dup?`，跳过重复 ${dup} 条（手机号已存在）`:''}${fail?`，失败 ${fail} 条（缺少姓名/部门）`:''}（每人 1 次机会）`);
+  if(serverMode&&rows.length) api('admin/import',{rows},true);
 });
 function toggleFlag(id,field){
-  const p=state.participants.find(x=>x.id===id); if(p) p[field]=!p[field];
+  const p=state.participants.find(x=>x.id===id); if(!p) return;
+  p[field]=!p[field];
   renderAdmin();
+  if(serverMode) api('admin/patch',{id:id,patch:{[field]:p[field]}},true);
 }
 
 /* ---------- 人员删除：单人 / 批量 / 全部 ---------- */
@@ -1757,13 +1947,12 @@ function removeParticipants(ids){
   ids.forEach(id=>{ delete state.chances[id]; peopleSel.delete(id); });
   if(state.currentUser && set.has(state.currentUser.id)){   // 当前登录者被删 → 退出登录态
     state.currentUser=null;
-    $('appAvatar').textContent='?'; $('appName').textContent='未登录'; $('appDept').textContent='—';
-    $('appChance').textContent='0'; $('homePlays').textContent='0';
-    gotoView('view-home');
+    resetAppHead();
   }
   state.tapOpponents=null;
   renderRollGrid(); renderAdmin();
   toast(`已删除 ${n} 人`);
+  if(serverMode) api('admin/del',{ids:ids},true);
 }
 function delParticipant(id){
   const p=state.participants.find(x=>x.id===id); if(!p) return;
@@ -1784,6 +1973,7 @@ $('btnDelSelected').addEventListener('click',delSelected);
 $('btnDelAll').addEventListener('click',delAllPeople);
 $('btnResetAll').addEventListener('click',()=>{
   if(!confirm('将清空本机保存的全部数据（名单 / 奖品 / 中奖记录 / 抽奖机会），恢复初始演示状态。确定吗？')) return;
+  if(serverMode){ api('admin/reset',{},true).then(()=>toast('已恢复初始演示数据（所有设备同步）')); return; }
   localStorage.removeItem(STATE_KEY);
   location.reload();
 });
@@ -1821,9 +2011,15 @@ $('btnAdminReset').addEventListener('click',()=>{
   if(state.round.status==='rolling'){ clearInterval(rollTimer); state.round.status='idle';
     $('btnStartRoll').disabled=false; $('btnStopRoll').disabled=true; }
   state.round.wins=[]; renderAdmin(); toast('场次已重置');
+  if(serverMode) api('admin/resetRound',{},true);       // 服务端模式：同步清空「本场」记录
 });
-$('btnManual').addEventListener('click',()=>{
+$('btnManual').addEventListener('click',async()=>{
   const pid=+$('manualWinner').value;
+  if(serverMode){                                   // 服务端权威：校验机会 / 限中 / 扣减
+    const r=await api('admin/manual',{pid:pid},true);
+    if(r&&r.winner){ showWinner(r.winner); renderMyPrizes(); toast('已按白名单手动指定中奖'); }
+    return;
+  }
   const p=state.participants.find(x=>x.id===pid);
   if(!p||!p.isWhite){ toast('仅可指定白名单成员（在名单中先设白名单）'); return; }
   if(chanceOf(p.id)<=0){ toast('该成员已无抽奖机会，可先为其补充机会'); return; }
@@ -1846,6 +2042,7 @@ function redeem(id){
   const r=state.lotteryRecords.find(x=>x.id===id);
   if(!r||r.status!=='待核销') return;
   r.status='已核销'; renderAdmin(); renderMyPrizes();
+  if(serverMode) api('admin/redeem',{rid:id},true);
   toast(`✅ ${maskName(r.name)} 的「${r.prize}」核销成功`);
 }
 $('btnExport').addEventListener('click',()=>{
@@ -1971,6 +2168,7 @@ if($('bsPart')) $('bsPart').textContent=state.participants.length;
 updateAdminAuth();
 fillDeptOptions();
 renderAppHead();
+probeServer();          // 探测服务端：有则进入多设备共享模式，无则保持本地模式
 </script>
 </body>
 </html>
