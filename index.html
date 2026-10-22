@@ -59,9 +59,9 @@
   #screen-bigscreen{padding:18px}
   .bs{position:relative;min-height:calc(100vh - 90px);border-radius:16px;overflow:hidden;
     background:linear-gradient(160deg,var(--bs-bg1),var(--bs-bg2) 55%,var(--bs-bg3));color:#fff}
-  .bs-bg{position:absolute;inset:0;background-size:cover;background-position:center;opacity:.9}
-  .bs-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(13,6,24,.55),rgba(13,6,24,.82))}
-  .bs>*{position:relative;z-index:1}
+  .bs-bg{position:absolute;inset:0;background-size:cover;background-position:center;opacity:1}
+  .bs-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(13,6,24,.3),rgba(13,6,24,.58))}
+  .bs>*:not(.bs-bg){position:relative;z-index:1}
   .bs-top{display:flex;align-items:center;justify-content:space-between;padding:20px 28px 6px}
   .bs-title{display:flex;align-items:center;gap:14px}
   .bs-title h1{font-size:26px;letter-spacing:2px;text-shadow:0 2px 12px rgba(0,0,0,.5)}
@@ -152,6 +152,10 @@
   .phone-notch i{width:110px;height:6px;border-radius:3px;background:#d8d4e0}
   .poster{flex:1;background:linear-gradient(165deg,#8f1d0c,#c62f1c 60%,#e0621f);color:#fff;
     display:flex;flex-direction:column;align-items:center;padding:28px 22px 22px;text-align:center;position:relative;overflow:hidden}
+  .poster-bg{position:absolute;inset:0;background-size:cover;background-position:center;opacity:0;transition:opacity .45s;z-index:0}
+  .poster-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(70,12,6,.5),rgba(120,25,10,.62))}
+  body.has-bg .poster-bg{opacity:1}
+  .poster>*:not(.poster-bg){position:relative;z-index:1}
   .poster::before,.poster::after{content:"";position:absolute;border-radius:50%;border:1px solid rgba(255,255,255,.18)}
   .poster::before{width:260px;height:260px;top:-90px;right:-90px}
   .poster::after{width:200px;height:200px;bottom:-70px;left:-70px}
@@ -375,6 +379,7 @@
     <div class="phone-inner">
       <div class="phone-notch"><i></i></div>
       <div class="poster">
+        <div class="poster-bg" id="posterBg"></div>
         <div style="font-size:34px">🎁</div>
         <div class="p-title" id="posterTitle">2026 年度盛典</div>
         <div class="p-sub">扫码参与 · 玩游戏赢大奖</div>
@@ -578,6 +583,7 @@
             <div class="f"><label>大屏背景图片（自定义）</label>
               <input type="file" id="cfgBgFile" accept="image/*">
               <div class="bg-preview" id="cfgBgPreview" style="margin-top:8px">未上传 · 当前使用默认渐变背景</div>
+              <button class="btn btn-ghost" id="btnClearBg" style="margin-top:8px;font-size:12px;padding:5px 12px">🗑 清除背景图</button>
             </div>
             <div class="f"><label>规则文案</label>
               <textarea id="cfgRules" rows="4">扫描二维码，授权手机号即可参与，扫码之后既可以抽奖也可参与游戏</textarea></div>
@@ -1213,13 +1219,49 @@ document.querySelectorAll('.admin-nav button').forEach(b=>b.addEventListener('cl
   $('cfgStart').value=pad(new Date(Date.now()-3600000));
   $('cfgEnd').value=pad(new Date(Date.now()+3*3600000));
 })();
+/* ---------- 大屏背景：上传 / 压缩持久化 / 跨标签页同步 ---------- */
+const BG_KEY='mk_bg';
+function applyBg(url,save){
+  state.activity.bgUrl=url||null;
+  $('cfgBgPreview').style.backgroundImage=url?`url(${url})`:'none';
+  $('cfgBgPreview').textContent=url?'':'未上传 · 当前使用默认渐变背景';
+  $('bsBg').style.backgroundImage=url?`url(${url})`:'none';
+  if($('posterBg')) $('posterBg').style.backgroundImage=url?`url(${url})`:'none';
+  document.body.classList.toggle('has-bg',!!url);
+  if(save){
+    try{ if(url) localStorage.setItem(BG_KEY,url); else localStorage.removeItem(BG_KEY); }
+    catch(err){ toast('⚠️ 图片过大，背景仅在本页生效，刷新后需重新上传'); }
+  }
+}
+function downscale(dataUrl,maxW,q,cb){
+  const img=new Image();
+  img.onload=()=>{
+    if(img.width<=maxW){ cb(dataUrl); return; }
+    const s=maxW/img.width, c=document.createElement('canvas');
+    c.width=maxW; c.height=Math.round(img.height*s);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    cb(c.toDataURL('image/jpeg',q));
+  };
+  img.onerror=()=>cb(dataUrl);
+  img.src=dataUrl;
+}
 $('cfgBgFile').addEventListener('change',e=>{
   const f=e.target.files[0]; if(!f) return;
   const rd=new FileReader();
-  rd.onload=()=>{ $('cfgBgPreview').style.backgroundImage=`url(${rd.result})`;
-    $('cfgBgPreview').textContent=''; state.activity.bgUrl=rd.result;
-    $('bsBg').style.backgroundImage=`url(${rd.result})`; toast('背景图已上传并同步大屏'); };
+  rd.onload=()=>downscale(rd.result,1920,.85,url=>{
+    applyBg(url,true); toast('✅ 背景图已上传，大屏与扫码页已同步');
+  });
   rd.readAsDataURL(f);
+});
+$('btnClearBg').addEventListener('click',()=>{
+  $('cfgBgFile').value=''; applyBg(null,true); toast('已清除背景图，恢复默认渐变背景');
+});
+/* 启动时恢复上次上传的背景（同一浏览器，刷新不丢失） */
+(function initBg(){ const s=localStorage.getItem(BG_KEY); if(s) applyBg(s,false); })();
+/* 同一浏览器其他标签页上传 / 清除背景时实时同步 */
+window.addEventListener('storage',e=>{
+  if(e.key!==BG_KEY) return;
+  applyBg(e.newValue,false);
 });
 $('btnSaveActivity').addEventListener('click',()=>{
   state.activity.name=$('cfgName').value;
