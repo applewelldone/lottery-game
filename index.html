@@ -139,6 +139,7 @@
     text-shadow:0 0 40px rgba(255,184,77,.4)}
   .winner-card .wp{font-size:20px;color:#fff;letter-spacing:2px}
   .winner-card .wdept{font-size:13px;color:#c9c2d9;margin-top:8px}
+  .winner-card .wchance{font-size:12.5px;color:#ffd76e;margin-top:6px;letter-spacing:1px}
   .winner-card .wclose{margin-top:26px}
   @media(max-width:960px){.bs-main{grid-template-columns:1fr}.roll-grid{grid-template-columns:repeat(3,1fr)}}
 
@@ -394,6 +395,7 @@
         <div class="wn" id="wmName">—</div>
         <div class="wp" id="wmPrize">—</div>
         <div class="wdept" id="wmDept">—</div>
+        <div class="wchance" id="wmChance" style="display:none"></div>
         <div><button class="btn btn-ghost wclose" id="wmClose">知道了</button></div>
       </div>
     </div>
@@ -453,12 +455,12 @@
         <div class="app-view active" id="view-home">
           <div class="banner" id="homeSignup" style="display:none;background:linear-gradient(135deg,#fff4e8,#fdeee8);border:1px solid #f5c6b8">
             <h4>📝 还未报名</h4>
-            <p style="color:#a33d1f">填写姓名 / 部门 / 手机号即可加入活动名单，报名后送 2 次抽奖机会</p>
+            <p style="color:#a33d1f">填写姓名 / 部门 / 手机号即可加入活动名单，报名送 1 次抽奖机会</p>
             <button class="btn btn-red btn-sm" style="margin-top:8px" onclick="goSignup()">立即报名</button>
           </div>
           <div class="banner">
             <h4>🎪 小游戏大厅</h4>
-            <p>玩手速 / 摇一摇赢抽奖机会，现场大屏开奖 · 今日已参与 <b id="homePlays">0</b> 局</p>
+            <p>当前 <b id="homeChance">0</b> 次抽奖机会 · 玩手速 / 摇一摇赚机会，现场大屏开奖，每开奖 1 次消耗 1 次机会 · 今日已参与 <b id="homePlays">0</b> 局</p>
           </div>
           <div class="game-list">
             <div class="game-card" onclick="gotoView('view-tap')">
@@ -697,6 +699,8 @@
             <button class="btn btn-gold" id="btnAdminStart">▶ 开始滚动</button>
             <button class="btn btn-red" id="btnAdminStop" disabled>⏸ 停止开奖</button>
             <button class="btn btn-ghost" id="btnAdminReset">↺ 重置场次</button>
+            <button class="btn btn-green" id="btnGrantAll">🔄 全员补充 1 次机会</button>
+            <span class="muted" id="poolInfo"></span>
           </div>
           <div class="form-row">
             <div class="f" style="flex:0 0 210px"><label>本轮抽奖奖项（与大屏同步）</label>
@@ -708,7 +712,7 @@
             <div class="f" style="flex:0 0 130px;display:flex;align-items:flex-end">
               <button class="btn btn-blue" id="btnManual">指定中奖</button></div>
           </div>
-          <p class="muted">手动指定需白名单成员，操作将写入审计日志；大屏与手机端转盘共用同一奖品库存。</p>
+          <p class="muted">机会规则：每人 1 次基础机会（报名 / 导入 / 登录获得），玩拼手速、摇一摇可赚更多；大屏每开奖 1 次消耗 1 次机会，机会为 0 不再入池；「每人限中」按奖项生效。手动指定需白名单成员，操作将写入审计日志。</p>
         </div>
         <div class="panel">
           <h3>本场已中奖</h3>
@@ -791,6 +795,14 @@ state.participants = genParticipants(48);
 state.prizes = defaultPrizes();
 state.currentPrizeId = state.prizes[0] ? state.prizes[0].id : null;
 state.participants[0].isWhite = true;
+initChances(state.participants);          // 每人 1 次基础抽奖机会
+
+/* ---------- 抽奖机会 ---------- */
+function initChances(list){ list.forEach(p=>{ state.chances[p.id]=1; p.chance=1; }); }
+function grantChances(pid,n){ state.chances[pid]=(state.chances[pid]||0)+n; }
+function consumeChance(pid){ state.chances[pid]=Math.max(0,(state.chances[pid]||0)-1); }
+function chanceOf(pid){ return state.chances[pid]||0; }
+function grantOne(pid){ grantChances(pid,1); const p=state.participants.find(x=>x.id===pid); if(p) p.chance=chanceOf(pid); renderAdmin(); renderAppHead(); toast(`已为 ${p?p.name:'该成员'} 补充 1 次抽奖机会`); }
 
 /* ---------- 工具 ---------- */
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show');
@@ -1063,8 +1075,8 @@ function login(way){
   const eligible=state.participants.filter(p=>!p.isBlack);
   if(!eligible.length){ toast('名单为空，请先报名或让后台导入人员'); return; }
   state.currentUser = pick(eligible);
-  state.chances[state.currentUser.id] = state.chances[state.currentUser.id] ?? 2;
-  toast(`✅ ${way}登录成功，已赠送 2 次抽奖机会`);
+  state.chances[state.currentUser.id] = state.chances[state.currentUser.id] ?? 1;
+  toast(`✅ ${way}登录成功，当前有 ${chanceOf(state.currentUser.id)} 次抽奖机会`);
   switchScreen('mobile');
   renderAppHead();
 }
@@ -1092,15 +1104,15 @@ function doSignup(){
   if(exist){
     if(exist.isBlack){ toast('该手机号已被列入黑名单，无法参与'); return; }
     state.currentUser=exist;
-    state.chances[exist.id]=state.chances[exist.id]??2;
-    toast(`欢迎回来，${exist.name}！已为你直接登录`);
+    state.chances[exist.id]=state.chances[exist.id]??1;
+    toast(`欢迎回来，${exist.name}！当前有 ${chanceOf(exist.id)} 次抽奖机会`);
   }else{
-    const p={id:Date.now(),name,dept,phone,isWhite:false,isBlack:false,chance:0,source:'自主报名'};
+    const p={id:Date.now(),name,dept,phone,isWhite:false,isBlack:false,chance:1,source:'自主报名'};
     state.participants.push(p);
     state.currentUser=p;
-    state.chances[p.id]=2;
+    state.chances[p.id]=1;
     state.tapOpponents=null;
-    toast('🎉 报名成功！已赠送 2 次抽奖机会');
+    toast('🎉 报名成功！已赠送 1 次抽奖机会');
   }
   $('suName').value=''; $('suPhone').value='';
   showPoster('main');
@@ -1126,6 +1138,7 @@ function gotoView(id){
 function renderAppHead(){
   const u=state.currentUser;
   $('homeSignup').style.display = u ? 'none' : 'block';
+  $('homeChance').textContent = u ? chanceOf(u.id) : 0;
   if(!u) return;
   $('appAvatar').textContent=u.name[0];
   $('appName').textContent=maskName(u.name);
@@ -1397,7 +1410,7 @@ document.addEventListener('keydown',e=>{
 ===================================================== */
 let rollTimer=null;
 function renderRollGrid(highlightIdx){
-  const grid=$('rollGrid'), pool=state.participants.filter(p=>!p.isBlack);
+  const grid=$('rollGrid'), pool=eligibleForDraw();
   let html='';
   for(let i=0;i<12;i++){
     const p=pool.length?pool[Math.floor(Math.random()*pool.length)]:null;
@@ -1409,15 +1422,28 @@ function renderRollGrid(highlightIdx){
 renderRollGrid();
 
 function eligibleForDraw(){
-  const blackIds=state.participants.filter(p=>p.isBlack).map(p=>p.id);
-  return state.participants.filter(p=>!blackIds.includes(p.id));
+  // 抽奖池 = 非黑名单 且 还有抽奖机会的成员
+  return state.participants.filter(p=>!p.isBlack && chanceOf(p.id)>0);
+}
+function prizeWins(pid,prize){
+  if(!prize) return 0;
+  return state.lotteryRecords.filter(r=>r.pid===pid && (prize.id?r.prizeId===prize.id:r.prize===prize.name)).length;
+}
+function prizeLimitOk(p,prize){
+  if(!prize || !prize.limit) return true;
+  return prizeWins(p.id,prize) < prize.limit;
 }
 $('btnStartRoll').addEventListener('click',startRoll);
 $('btnStopRoll').addEventListener('click',stopRoll);
 
 function startRoll(){
   if(state.round.status==='rolling') return;
-  if(!eligibleForDraw().length){ toast('可抽奖名单为空'); return; }
+  if(!eligibleForDraw().length){
+    toast(state.participants.filter(p=>!p.isBlack).length
+      ? '名单中无人还有抽奖机会，提醒学员玩游戏赚机会，或在后台补充'
+      : '可抽奖名单为空');
+    return;
+  }
   const p=currentPrize();
   if(!p || p.stock<=0){ toast('当前奖项已抽完，请滑动切换其他奖项'); return; }
   state.round.status='rolling';
@@ -1436,21 +1462,25 @@ function stopRoll(){
   const winners=[];
   const used=new Set();
   for(let i=0;i<count;i++){
-    const cand=pool.filter(p=>!used.has(p.id));
+    const cand=pool.filter(p=>!used.has(p.id) && prizeLimitOk(p,prize));
     if(!cand.length) break;
     const w=pick(cand); used.add(w.id);
     let got=null;
     if(prize && prize.stock>0){ prize.stock--; prize.won++; got=prize; }
     if(got){
-      const rec={ id:Date.now()+i, pid:w.id, name:w.name, dept:w.dept,
+      const rec={ id:Date.now()+i, pid:w.id, prizeId:got.id, name:w.name, dept:w.dept,
                   level:got.level||'', prize:got.name,
                   code:genCode(), status:'待核销', time:now(), source:'大屏池抽' };
       state.lotteryRecords.push(rec); state.round.wins.push(rec);
     }
-    winners.push({ name:w.name, dept:w.dept, prize:got?got.name:'谢谢参与',
-                   level:got?(got.level||''):'' });
+    consumeChance(w.id);                          // 每开奖 1 次消耗 1 次机会
+    const win={ name:w.name, dept:w.dept, prize:got?got.name:'谢谢参与',
+                level:got?(got.level||''):'' };
+    if(state.currentUser && w.id===state.currentUser.id) win.chanceLeft=chanceOf(w.id);
+    winners.push(win);
   }
-  showWinner(winners[0]);
+  if(winners.length) showWinner(winners[0]);
+  else toast('本场没有符合条件的中奖者（机会已用完或已达每人限中上限）');
   // 奖项抽完后自动切换到下一个有库存的奖项
   const next=state.prizes.find(p=>p.stock>0);
   if(!next){
@@ -1463,7 +1493,7 @@ function stopRoll(){
   }else{
     $('rollStatus').innerHTML=prizeStatusText()+' · 点击「开始抽奖」启动名单滚动';
   }
-  renderWinnerFeed(); renderPrizeProgress(); renderAdmin();
+  renderWinnerFeed(); renderPrizeProgress(); renderAdmin(); renderAppHead();
   $('roundStatusTag') && ($('roundStatusTag').innerHTML='<span class="status-dot idle"></span>待开始');
 }
 function showWinner(w){
@@ -1472,6 +1502,10 @@ function showWinner(w){
   $('wmLevel').style.display=w.level?'inline-block':'none';
   $('wmPrize').textContent=w.prize==='谢谢参与'?'差一点点，明年再战！':'🎁 '+w.prize;
   $('wmDept').textContent=w.dept;
+  if(w.chanceLeft!==undefined){
+    $('wmChance').textContent=`已消耗 1 次抽奖机会 · 剩余 ${w.chanceLeft} 次`;
+    $('wmChance').style.display='block';
+  }else $('wmChance').style.display='none';
   $('winnerModal').classList.add('show');
   if(w.prize!=='谢谢参与') fireConfetti();
 }
@@ -1604,17 +1638,26 @@ function delPrize(id){
 }
 
 /* ---------- 人员名单 ---------- */
-$('btnGen50').addEventListener('click',()=>{ state.participants=genParticipants(50); state.tapOpponents=null; renderAdmin(); toast('已生成 50 条模拟名单'); });
+$('btnGen50').addEventListener('click',()=>{ state.participants=genParticipants(50); state.chances={}; initChances(state.participants); state.tapOpponents=null; renderAdmin(); toast('已生成 50 条模拟名单（每人 1 次机会）'); });
+$('btnGrantAll').addEventListener('click',()=>{
+  const list=state.participants.filter(p=>!p.isBlack);
+  if(!list.length){ toast('名单为空，无可补充机会的人员'); return; }
+  if(!confirm(`将给 ${list.length} 人各补充 1 次抽奖机会（黑名单除外），确定吗？`)) return;
+  list.forEach(p=>{ grantChances(p.id,1); p.chance=chanceOf(p.id); });
+  renderAdmin(); renderAppHead();
+  toast(`已为 ${list.length} 人各补充 1 次抽奖机会`);
+});
 $('btnImport').addEventListener('click',()=>{
   const lines=$('importText').value.trim().split('\n').filter(Boolean);
   let ok=0,fail=0;
   lines.forEach(l=>{
     const [name,dept,phone]=l.split(/[,，\t]/).map(s=>s?.trim());
-    if(name&&dept){ state.participants.push({id:Date.now()+Math.random(),name,dept,phone:phone||'—',isWhite:false,isBlack:false,chance:0}); ok++; }
+    if(name&&dept){ const p={id:Date.now()+Math.random(),name,dept,phone:phone||'—',isWhite:false,isBlack:false,chance:1,source:'后台导入'};
+      state.participants.push(p); state.chances[p.id]=1; ok++; }
     else fail++;
   });
   $('importText').value=''; state.tapOpponents=null; renderAdmin();
-  toast(`导入完成：成功 ${ok} 条${fail?`，失败 ${fail} 条（缺少姓名/部门）`:''}`);
+  toast(`导入完成：成功 ${ok} 条${fail?`，失败 ${fail} 条（缺少姓名/部门）`:''}（每人 1 次机会）`);
 });
 function toggleFlag(id,field){
   const p=state.participants.find(x=>x.id===id); if(p) p[field]=!p[field];
@@ -1694,15 +1737,18 @@ $('btnManual').addEventListener('click',()=>{
   const pid=+$('manualWinner').value;
   const p=state.participants.find(x=>x.id===pid);
   if(!p||!p.isWhite){ toast('仅可指定白名单成员（在名单中先设白名单）'); return; }
+  if(chanceOf(p.id)<=0){ toast('该成员已无抽奖机会，可先为其补充机会'); return; }
   const avail=state.prizes.filter(x=>x.stock>0);
   if(!avail.length){ toast('奖品已全部售罄'); return; }
   const prize=(currentPrize()&&currentPrize().stock>0)?currentPrize():avail[0];
+  if(!prizeLimitOk(p,prize)){ toast(`该成员已达「${prize.level||prize.name}」每人限中上限（${prize.limit} 次）`); return; }
   prize.stock--; prize.won++;
-  const rec={id:Date.now(),pid:p.id,name:p.name,dept:p.dept,level:prize.level||'',prize:prize.name,code:genCode(),
+  const rec={id:Date.now(),pid:p.id,prizeId:prize.id,name:p.name,dept:p.dept,level:prize.level||'',prize:prize.name,code:genCode(),
     status:'待核销',time:now(),source:'手动指定'};
   state.lotteryRecords.push(rec); state.round.wins.push(rec);
-  showWinner({name:p.name,dept:p.dept,prize:prize.name,level:prize.level||''});
-  renderAdmin(); renderPrizeProgress(); renderWinnerFeed();
+  consumeChance(p.id);                           // 手动指定同样消耗 1 次机会
+  showWinner({name:p.name,dept:p.dept,prize:prize.name,level:prize.level||'',chanceLeft:chanceOf(p.id)});
+  renderAdmin(); renderPrizeProgress(); renderWinnerFeed(); renderAppHead();
   toast('已按白名单手动指定中奖（已记审计日志）');
 });
 
@@ -1749,7 +1795,9 @@ function renderAdmin(){
   $('peopleShown').textContent=state.participants.length>60?`（名单较多，仅显示前 60 条，共 ${state.participants.length} 人）`:'';
   $('peopleTable').innerHTML=state.participants.slice(0,60).map(p=>`<tr>
     <td><input type="checkbox" class="row-chk" data-id="${p.id}" ${peopleSel.has(p.id)?'checked':''}></td>
-    <td>${p.name}</td><td>${p.dept}</td><td>${p.phone}</td><td>${state.chances[p.id]||0}</td>
+    <td>${p.name}</td><td>${p.dept}</td><td>${p.phone}</td>
+    <td><b style="color:${chanceOf(p.id)>0?'var(--green)':'var(--ink3)'}">${chanceOf(p.id)}</b>
+        <button class="btn btn-ghost btn-sm" style="padding:1px 6px;font-size:11px;margin-left:4px" onclick="grantOne(${p.id})" title="补充 1 次抽奖机会">+</button></td>
     <td>${p.isWhite?'<span class="tag b">白名单</span>':'—'} ${p.isBlack?'<span class="tag r">黑名单</span>':''} ${p.source==='自主报名'?'<span class="tag a">报名</span>':''}</td>
     <td><button class="btn btn-ghost btn-sm" onclick="toggleFlag(${p.id},'isWhite')">白</button>
         <button class="btn btn-ghost btn-sm" onclick="toggleFlag(${p.id},'isBlack')">黑</button>
@@ -1759,8 +1807,12 @@ function renderAdmin(){
   // 手动指定下拉
   const sel=$('manualWinner');
   const whites=state.participants.filter(p=>p.isWhite);
-  sel.innerHTML=whites.map(p=>`<option value="${p.id}">${p.name}（${p.dept}）</option>`).join('')
+  sel.innerHTML=whites.map(p=>`<option value="${p.id}">${p.name}（${p.dept} · 剩 ${chanceOf(p.id)} 次）</option>`).join('')
     ||'<option value="">暂无白名单成员</option>';
+  // 抽奖池信息
+  const total=state.participants.filter(p=>!p.isBlack).length;
+  const avail=eligibleForDraw().length;
+  $('poolInfo').innerHTML=`可抽奖 <b>${avail}</b> 人 / 名单 ${total} 人`;
   // 本场已中奖
   $('roundWinTable').innerHTML=state.round.wins.map(r=>`<tr>
     <td>${r.name}</td><td>${r.dept}</td><td>${r.level?`<span class="tag r">${r.level}</span>`:'—'}</td><td>${r.prize}</td><td>${r.time}</td></tr>`).join('')
