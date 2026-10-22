@@ -812,6 +812,7 @@ function saveState(){
     // 若随状态一起落盘会瞬间撑爆 localStorage 配额，导致后续删除/导入全部静默失败（刷新后数据复活）
     if(rest.activity) rest.activity=Object.assign({},rest.activity,{ bgUrl:null });
     localStorage.setItem(STATE_KEY,JSON.stringify(rest));
+    if(!serverMode) setSyncBadge(`本地模式（数据存本机 · ${dataFingerprint()}）`,false);   // 本地模式指纹随数据更新
     return true;
   }catch(e){
     // 配额写失败必须让用户看见：否则界面显示「已删除」但刷新后数据复活，极难排查
@@ -902,6 +903,7 @@ function applyServerState(st,version){
   refreshActivityUI();
   renderRollGrid(); renderAdmin(); renderAppHead();
   renderPrizeProgress(); renderWinnerFeed(); refreshBsPart();
+  if(serverMode) setSyncBadge(`☁ 服务端共享 · 数据 ${dataFingerprint()}`,true);   // 指纹随数据实时更新
 }
 /* 清空移动端登录态（当前用户被删除/拉黑时调用） */
 function resetAppHead(){
@@ -949,7 +951,7 @@ async function probeServer(){
     setInterval(pollServer,SYNC_POLL);
   }catch(e){
     serverMode=false;
-    setSyncBadge('本地模式（未连接服务端）',false);
+    setSyncBadge(`本地模式（未连接服务端 · ${dataFingerprint()}）`,false);
   }
 }
 
