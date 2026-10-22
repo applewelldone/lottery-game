@@ -347,7 +347,7 @@
     <button class="tab" data-screen="admin">⚙️ 管理后台</button>
   </nav>
   <button class="btn-full" id="btnFullscreen">⛶ 全屏</button>
-  <span class="hint">交互原型 · 数据为模拟</span>
+  <span class="hint">交互原型 V1.11 · 数据为模拟</span>
 </header>
 
 <!-- ==================== 大屏抽奖 ==================== -->
@@ -801,7 +801,9 @@ function defaultPrizes(){
 }
 /* ---------- 本地持久化：删除/导入/开奖等操作刷新不丢 ---------- */
 const STATE_KEY='mk_state_v1';
+let stateSyncing=false;                                // 跨标签页同步期间禁止回写，防事件乒乓
 function saveState(){
+  if(stateSyncing) return;                             // 同步中不回写（数据本就来自存储）
   try{
     const {tapOpponents,...rest}=state;              // tapOpponents 是派生缓存，不落盘
     localStorage.setItem(STATE_KEY,JSON.stringify(rest));
@@ -858,7 +860,7 @@ document.querySelectorAll('.topnav .tab').forEach(tab=>{
     tab.classList.add('active');
     $('screen-'+tab.dataset.screen).classList.add('active');
     if(tab.dataset.screen==='admin'){ updateAdminAuth(); renderAdmin(); }
-    if(tab.dataset.screen==='bigscreen'){ renderPrizeProgress(); }
+    if(tab.dataset.screen==='bigscreen'){ renderPrizeProgress(); refreshBsPart(); }
   });
 });
 
@@ -1471,7 +1473,9 @@ function renderRollGrid(highlightIdx){
       <div class="n">${p?esc(maskName(p.name)):'—'}</div><div class="d">${p?esc(p.dept):''}</div></div>`;
   }
   grid.innerHTML=html;
+  refreshBsPart();                                   // 名单变动 → 大屏人数立即刷新（不等 1.5s 心跳）
 }
+function refreshBsPart(){ if($('bsPart')) $('bsPart').textContent=state.participants.length; }
 renderRollGrid();
 
 function eligibleForDraw(){
@@ -1665,6 +1669,23 @@ $('btnClearBg').addEventListener('click',()=>{
 window.addEventListener('storage',e=>{
   if(e.key!==BG_KEY) return;
   applyBg(e.newValue,false);
+});
+/* 同一浏览器其他标签页改动名单 / 奖品 / 开奖时实时同步（如一个标签投大屏、一个标签管后台） */
+window.addEventListener('storage',e=>{
+  if(e.key!==STATE_KEY) return;
+  if(!e.newValue){ location.reload(); return; }               // 其他标签恢复了初始数据 → 本标签同步重载
+  if(rollTimer){ clearInterval(rollTimer); rollTimer=null; }        // 中断本标签的滚动，避免状态错位
+  if(state.round.status==='rolling'){
+    state.round.status='idle';
+    $('btnStartRoll').disabled=false; $('btnStopRoll').disabled=true;
+  }
+  stateSyncing=true;
+  try{
+    if(loadState()){                                             // 重载共享数据并刷新各界面
+      renderRollGrid(); renderAdmin(); renderAppHead();
+      renderPrizeProgress(); renderWinnerFeed(); refreshBsPart();
+    }
+  }finally{ stateSyncing=false; }
 });
 $('btnSaveActivity').addEventListener('click',()=>{
   state.activity.name=$('cfgName').value;
@@ -1928,7 +1949,7 @@ const onlineHist=Array(30).fill(0).map(()=>300+Math.floor(Math.random()*120));
 setInterval(()=>{
   state.online=Math.max(120,state.online+Math.floor(rnd(-18,20)));
   onlineHist.push(state.online); onlineHist.shift();
-  if($('bsPart')) $('bsPart').textContent=state.participants.length;   // 大屏：已报名人数（与后台名单同源）
+  refreshBsPart();                                    // 大屏：已报名人数（与后台名单同源，双保险）
   if($('kpiOnline')) $('kpiOnline').textContent=state.online;
   if($('screen-admin').classList.contains('active')&&$('pane-dash').classList.contains('active')) drawOnline();
 },1500);
