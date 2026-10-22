@@ -167,6 +167,12 @@
   .poster .p-rules{font-size:12px;color:#ffe3d8;line-height:1.9;text-align:left;
     background:rgba(0,0,0,.22);border-radius:12px;padding:12px 16px;width:100%}
   .poster .p-actions{margin-top:auto;width:100%;display:flex;flex-direction:column;gap:10px;padding-top:18px}
+  /* 扫码参与者模式（body.join-mode）：隐藏导航，报名表单全屏呈现 */
+  body.join-mode .topnav{display:none}
+  body.join-mode #screen-scan{padding:0;align-items:stretch}
+  body.join-mode .phone{width:100%;max-width:560px;margin:0 auto;border-radius:0;background:transparent;padding:0;box-shadow:none}
+  body.join-mode .phone-notch{display:none}
+  body.join-mode .phone-inner{border-radius:0;min-height:100vh;min-height:100dvh}
   .btn-wechat{background:#1aad19;color:#fff;padding:12px;border-radius:12px;font-size:15px;font-weight:700}
   .btn-phone{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.4);color:#fff;padding:10px;border-radius:12px;font-size:13.5px}
 
@@ -353,7 +359,7 @@
         <h1 id="bsActivityName">2026 年度盛典 · 幸运抽奖</h1>
         <span class="live">● LIVE</span>
       </div>
-      <div class="bs-online">当前在线 <b id="bsOnline">0</b> 人</div>
+      <div class="bs-online">已报名 <b id="bsPart">0</b> 人</div>
     </div>
     <div class="bs-main">
       <div class="bs-stage">
@@ -415,7 +421,7 @@
           <div class="p-sub">扫码参与 · 玩游戏赢大奖</div>
           <div class="qr-box"><canvas id="qrCanvas" width="150" height="150"></canvas></div>
           <div class="p-rules" id="posterRules">
-            扫描二维码，授权手机号即可参与，扫码之后既可以抽奖也可参与游戏
+            扫描二维码报名参加，报名即送 1 次抽奖机会；玩拼手速 / 摇一摇还能赚更多机会，抽奖由现场大屏统一开奖
           </div>
           <div class="p-actions">
             <button class="btn-wechat" id="btnWxLogin">💬 微信一键登录参与</button>
@@ -609,7 +615,7 @@
         <div class="pane-title">📊 实时数据看板</div>
         <div class="kpis">
           <div class="kpi"><div class="v" id="kpiPv">0</div><div class="l">扫码 PV</div><div class="t">↑ 12.4% 同比昨日</div></div>
-          <div class="kpi"><div class="v" id="kpiOnline">0</div><div class="l">当前在线</div><div class="t">与大屏实时同步</div></div>
+          <div class="kpi"><div class="v" id="kpiOnline">0</div><div class="l">在线访客</div><div class="t">模拟数据 · 非报名人数</div></div>
           <div class="kpi"><div class="v" id="kpiParticipants">0</div><div class="l">名单人数</div><div class="t">导入 + 自主报名</div></div>
           <div class="kpi"><div class="v" id="kpiGames">0</div><div class="l">游戏对局</div><div class="t">人均 2.1 局</div></div>
           <div class="kpi"><div class="v" id="kpiWins">0</div><div class="l">中奖人次</div><div class="t">核销率 76%</div></div>
@@ -757,7 +763,7 @@
 ===================================================== */
 const state = {
   activity:{ name:'2026 年度盛典 · 幸运抽奖', bgUrl:null, status:'已发布',
-             rules:'扫描二维码，授权手机号即可参与，扫码之后既可以抽奖也可参与游戏' },
+             rules:'扫描二维码报名参加，报名即送 1 次抽奖机会；玩拼手速 / 摇一摇还能赚更多机会，抽奖由现场大屏统一开奖' },
   participants:[], prizes:[], lotteryRecords:[], gameSessions:[],
   chances:{}, online:326, round:{ status:'idle', wins:[] },
   currentUser:null, pv:1240, bestTap:0, bestShake:0, currentPrizeId:null
@@ -815,6 +821,7 @@ function genCode(){ return 'RX'+Date.now().toString(36).toUpperCase().slice(-6)+
 ===================================================== */
 document.querySelectorAll('.topnav .tab').forEach(tab=>{
   tab.addEventListener('click',()=>{
+    if(document.body.classList.contains('join-mode')) return;   // 参与者模式禁止切换界面
     document.querySelectorAll('.topnav .tab').forEach(t=>t.classList.remove('active'));
     document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
     tab.classList.add('active');
@@ -823,6 +830,16 @@ document.querySelectorAll('.topnav .tab').forEach(tab=>{
     if(tab.dataset.screen==='bigscreen'){ renderPrizeProgress(); }
   });
 });
+
+/* =====================================================
+   扫码参与者模式（URL 带 #join 时生效）
+   手机扫码进入后只能报名 / 玩游戏：隐藏顶部导航，
+   不暴露大屏与后台控制入口，直达报名表单
+===================================================== */
+if(location.hash==='#join'){
+  document.body.classList.add('join-mode');
+  switchScreen('scan'); showPoster('signup');      // 扫码直达报名表单
+}
 
 /* =====================================================
    管理后台登录（演示级鉴权：admin / admin123）
@@ -1051,7 +1068,7 @@ function qrEncode(text){
 /* ---- 渲染到画布（含 4 模块静区，支持高分屏）---- */
 (function drawQR(){
   const c=$('qrCanvas'), ctx=c.getContext('2d');
-  const url=location.href.split('#')[0];
+  const url=location.href.split('#')[0]+'#join';   // 扫码进入参与者模式：只能报名/玩游戏
   const qr=qrEncode(url);
   if(!qr){ c.width=c.height=260; ctx.fillStyle='#fff'; ctx.fillRect(0,0,260,260);
     ctx.fillStyle='#17121f'; ctx.font='13px sans-serif'; ctx.textAlign='center';
@@ -1854,7 +1871,7 @@ const onlineHist=Array(30).fill(0).map(()=>300+Math.floor(Math.random()*120));
 setInterval(()=>{
   state.online=Math.max(120,state.online+Math.floor(rnd(-18,20)));
   onlineHist.push(state.online); onlineHist.shift();
-  $('bsOnline').textContent=state.online;
+  if($('bsPart')) $('bsPart').textContent=state.participants.length;   // 大屏：已报名人数（与后台名单同源）
   if($('kpiOnline')) $('kpiOnline').textContent=state.online;
   if($('screen-admin').classList.contains('active')&&$('pane-dash').classList.contains('active')) drawOnline();
 },1500);
@@ -1872,7 +1889,7 @@ function drawOnline(){
 }
 
 renderAdmin();
-$('bsOnline').textContent=state.online;
+if($('bsPart')) $('bsPart').textContent=state.participants.length;
 updateAdminAuth();
 fillDeptOptions();
 renderAppHead();
