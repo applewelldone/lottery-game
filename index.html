@@ -263,8 +263,35 @@
   .empty{text-align:center;color:var(--ink3);padding:36px 0;font-size:12.5px}
 
   /* ============ 管理后台 ============ */
-  #screen-admin{padding:18px}
+  #screen-admin{padding:18px;position:relative}
   .admin{display:grid;grid-template-columns:190px 1fr;gap:16px;align-items:start}
+  .admin-auth{display:none;align-items:center;justify-content:space-between;gap:6px;padding:8px 10px;margin-bottom:8px;
+    background:linear-gradient(135deg,#eef4ff,#f5f0ff);border:1px solid #d8d4f0;border-radius:8px;font-size:11.5px;color:var(--ink2)}
+  .admin-auth.is-in{display:flex}
+  .admin-auth button{padding:3px 8px;font-size:11px}
+  .admin-login{position:absolute;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+    background:rgba(246,247,249,.94);backdrop-filter:blur(6px);border-radius:16px}
+  .admin-login.hide{display:none}
+  .al-box{width:300px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px 26px;
+    box-shadow:0 18px 50px rgba(20,10,40,.14);text-align:center}
+  .al-box h3{margin:8px 0 2px;font-size:18px}
+  .al-logo{font-size:38px}
+  .al-box input{width:100%;padding:10px 12px;margin-top:10px;border:1px solid var(--line);border-radius:9px;font-size:14px;
+    background:#fafbfc;text-align:left}
+  .al-box input:focus{outline:none;border-color:var(--blue)}
+  .al-box .btn{margin-top:14px}
+  .al-hint{margin-top:14px;font-size:12px}
+  .admin-login.shake{animation:shake .4s}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+  /* 报名表单 */
+  .btn-signup{background:rgba(255,255,255,.92);border:1px dashed rgba(255,255,255,.85);color:#c62f1c;padding:11px;
+    border-radius:12px;font-size:14px;font-weight:700;width:100%}
+  .signup-form{display:none;flex-direction:column;width:100%;text-align:left}
+  .signup-form .sf{margin-bottom:10px}
+  .signup-form label{display:block;font-size:12px;color:#ffd9cc;margin-bottom:4px}
+  .signup-form input,.signup-form select{width:100%;padding:9px 11px;border:1px solid rgba(255,255,255,.45);border-radius:9px;
+    font-size:14px;background:rgba(255,255,255,.94);color:#17121f}
+  .signup-form input:focus,.signup-form select:focus{outline:none;border-color:#fff}
   .admin-nav{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px;position:sticky;top:72px}
   .admin-nav button{display:flex;align-items:center;gap:9px;width:100%;padding:9px 12px;border-radius:8px;
     font-size:13px;color:var(--ink2);background:none;text-align:left;margin-bottom:2px}
@@ -272,7 +299,7 @@
   .admin-nav button.active{background:linear-gradient(135deg,#fdeee8,#fdf3e3);color:var(--red);font-weight:700}
   .admin-pane{display:none}.admin-pane.active{display:block;animation:slidein .2s}
   .pane-title{font-size:17px;font-weight:800;margin-bottom:14px;display:flex;align-items:center;gap:10px}
-  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}
   @media(max-width:1100px){.kpis{grid-template-columns:repeat(2,1fr)}}
   .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
   .kpi .v{font-size:24px;font-weight:800;color:var(--red)}
@@ -380,16 +407,28 @@
       <div class="phone-notch"><i></i></div>
       <div class="poster">
         <div class="poster-bg" id="posterBg"></div>
-        <div style="font-size:34px">🎁</div>
-        <div class="p-title" id="posterTitle">2026 年度盛典</div>
-        <div class="p-sub">扫码参与 · 玩游戏赢大奖</div>
-        <div class="qr-box"><canvas id="qrCanvas" width="150" height="150"></canvas></div>
-        <div class="p-rules" id="posterRules">
-          扫描二维码，授权手机号即可参与，扫码之后既可以抽奖也可参与游戏
+        <div id="posterMain">
+          <div style="font-size:34px">🎁</div>
+          <div class="p-title" id="posterTitle">2026 年度盛典</div>
+          <div class="p-sub">扫码参与 · 玩游戏赢大奖</div>
+          <div class="qr-box"><canvas id="qrCanvas" width="150" height="150"></canvas></div>
+          <div class="p-rules" id="posterRules">
+            扫描二维码，授权手机号即可参与，扫码之后既可以抽奖也可参与游戏
+          </div>
+          <div class="p-actions">
+            <button class="btn-wechat" id="btnWxLogin">💬 微信一键登录参与</button>
+            <button class="btn-phone" id="btnPhoneLogin">📞 手机号验证码登录</button>
+            <button class="btn-signup" id="btnSignup">📝 我要报名</button>
+          </div>
         </div>
-        <div class="p-actions">
-          <button class="btn-wechat" id="btnWxLogin">💬 微信一键登录参与</button>
-          <button class="btn-phone" id="btnPhoneLogin">📞 手机号验证码登录</button>
+        <div id="posterSignup" class="signup-form">
+          <div class="p-title" style="font-size:19px">📝 活动报名</div>
+          <p class="p-sub" style="margin-bottom:14px">填写信息即可加入活动名单</p>
+          <div class="sf"><label>姓名</label><input id="suName" placeholder="请输入真实姓名" maxlength="12"></div>
+          <div class="sf"><label>部门</label><select id="suDept"></select></div>
+          <div class="sf"><label>手机号</label><input id="suPhone" placeholder="11 位手机号" maxlength="11" inputmode="numeric"></div>
+          <button class="btn-wechat" id="btnDoSignup" style="margin-top:6px">提交报名</button>
+          <button class="btn-phone" id="btnSignupBack">← 返回扫码页</button>
         </div>
       </div>
     </div>
@@ -412,6 +451,11 @@
       <div class="app-body">
         <!-- 首页 -->
         <div class="app-view active" id="view-home">
+          <div class="banner" id="homeSignup" style="display:none;background:linear-gradient(135deg,#fff4e8,#fdeee8);border:1px solid #f5c6b8">
+            <h4>📝 还未报名</h4>
+            <p style="color:#a33d1f">填写姓名 / 部门 / 手机号即可加入活动名单，报名后送 2 次抽奖机会</p>
+            <button class="btn btn-red btn-sm" style="margin-top:8px" onclick="goSignup()">立即报名</button>
+          </div>
           <div class="banner">
             <h4>🎪 小游戏大厅</h4>
             <p>玩手速 / 摇一摇赢抽奖机会，现场大屏开奖 · 今日已参与 <b id="homePlays">0</b> 局</p>
@@ -546,6 +590,10 @@
 <section id="screen-admin" class="screen">
   <div class="admin">
     <nav class="admin-nav">
+      <div class="admin-auth" id="adminAuthBar">
+        <span>👤 已登录：<b>admin</b>（演示）</span>
+        <button class="btn btn-ghost btn-sm" id="btnAdminLogout">退出登录</button>
+      </div>
       <button class="active" data-pane="pane-dash">📊 数据看板</button>
       <button data-pane="pane-activity">🎨 活动配置</button>
       <button data-pane="pane-prize">🏆 奖品管理</button>
@@ -559,10 +607,12 @@
         <div class="pane-title">📊 实时数据看板</div>
         <div class="kpis">
           <div class="kpi"><div class="v" id="kpiPv">0</div><div class="l">扫码 PV</div><div class="t">↑ 12.4% 同比昨日</div></div>
-          <div class="kpi"><div class="v" id="kpiParticipants">0</div><div class="l">已登录参与</div><div class="t">授权转化率 82%</div></div>
+          <div class="kpi"><div class="v" id="kpiOnline">0</div><div class="l">当前在线</div><div class="t">与大屏实时同步</div></div>
+          <div class="kpi"><div class="v" id="kpiParticipants">0</div><div class="l">名单人数</div><div class="t">导入 + 自主报名</div></div>
           <div class="kpi"><div class="v" id="kpiGames">0</div><div class="l">游戏对局</div><div class="t">人均 2.1 局</div></div>
           <div class="kpi"><div class="v" id="kpiWins">0</div><div class="l">中奖人次</div><div class="t">核销率 76%</div></div>
         </div>
+        <p class="muted" style="font-size:12px;margin:-6px 0 14px">口径说明：「当前在线」为实时访客模拟数，与大屏抽奖页展示的是同一个数字；「名单人数」为后台导入 + 用户自主报名的总人数，两者统计维度不同。</p>
         <div class="chart-box"><h4>参与漏斗</h4><canvas id="funnelChart" height="200"></canvas></div>
         <div class="chart-box"><h4>实时在线人数（近 60 秒）</h4><canvas id="onlineChart" height="200"></canvas></div>
       </div>
@@ -679,6 +729,18 @@
         </div>
       </div>
     </div>
+    <!-- 后台登录遮罩（未登录时覆盖整个后台） -->
+    <div class="admin-login" id="adminLogin">
+      <div class="al-box">
+        <div class="al-logo">⚙️</div>
+        <h3>管理后台登录</h3>
+        <p class="muted">请输入管理员账号密码</p>
+        <input id="alUser" placeholder="账号" autocomplete="username">
+        <input id="alPass" type="password" placeholder="密码" autocomplete="current-password">
+        <button class="btn btn-blue" id="btnAdminLogin" style="width:100%;padding:11px">登 录</button>
+        <p class="muted al-hint">演示账号：<b>admin</b> / <b>admin123</b></p>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -745,9 +807,35 @@ document.querySelectorAll('.topnav .tab').forEach(tab=>{
     document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
     tab.classList.add('active');
     $('screen-'+tab.dataset.screen).classList.add('active');
-    if(tab.dataset.screen==='admin'){ renderAdmin(); }
+    if(tab.dataset.screen==='admin'){ updateAdminAuth(); renderAdmin(); }
     if(tab.dataset.screen==='bigscreen'){ renderPrizeProgress(); }
   });
+});
+
+/* =====================================================
+   管理后台登录（演示级鉴权：admin / admin123）
+===================================================== */
+const ADMIN_USER='admin', ADMIN_PASS='admin123';
+let adminLoggedIn = sessionStorage.getItem('mk_admin')==='1';
+function updateAdminAuth(){
+  $('adminLogin').classList.toggle('hide', adminLoggedIn);
+  $('adminAuthBar').classList.toggle('is-in', adminLoggedIn);
+}
+$('btnAdminLogin').addEventListener('click',()=>{
+  const u=$('alUser').value.trim(), p=$('alPass').value;
+  if(u===ADMIN_USER && p===ADMIN_PASS){
+    adminLoggedIn=true; sessionStorage.setItem('mk_admin','1');
+    updateAdminAuth(); renderAdmin(); toast('✅ 登录成功，欢迎进入管理后台');
+  }else{
+    toast('❌ 账号或密码错误（演示账号 admin / admin123）');
+    const box=$('adminLogin');
+    box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake');
+  }
+});
+$('alPass').addEventListener('keydown',e=>{ if(e.key==='Enter') $('btnAdminLogin').click(); });
+$('alUser').addEventListener('keydown',e=>{ if(e.key==='Enter') $('alPass').focus(); });
+$('btnAdminLogout').addEventListener('click',()=>{
+  adminLoggedIn=false; sessionStorage.removeItem('mk_admin'); updateAdminAuth(); toast('已退出登录');
 });
 
 /* =====================================================
@@ -973,12 +1061,51 @@ $('btnPhoneLogin').addEventListener('click',()=>login('手机号验证码'));
 
 function login(way){
   const eligible=state.participants.filter(p=>!p.isBlack);
-  if(!eligible.length){ toast('名单为空，请先在后台导入人员'); return; }
+  if(!eligible.length){ toast('名单为空，请先报名或让后台导入人员'); return; }
   state.currentUser = pick(eligible);
   state.chances[state.currentUser.id] = state.chances[state.currentUser.id] ?? 2;
   toast(`✅ ${way}登录成功，已赠送 2 次抽奖机会`);
   switchScreen('mobile');
   renderAppHead();
+}
+
+/* ---------- 自主报名（扫码后填写信息加入名单） ---------- */
+function fillDeptOptions(){
+  $('suDept').innerHTML=DEPTS.map(d=>`<option>${d}</option>`).join('')+'<option>其他</option>';
+}
+function showPoster(which){
+  $('posterMain').style.display = which==='main' ? 'block' : 'none';
+  $('posterSignup').style.display = which==='signup' ? 'flex' : 'none';
+}
+function goSignup(){ switchScreen('scan'); showPoster('signup'); }
+$('btnSignup').addEventListener('click',()=>showPoster('signup'));
+$('btnSignupBack').addEventListener('click',()=>showPoster('main'));
+$('btnDoSignup').addEventListener('click',doSignup);
+$('suPhone').addEventListener('input',e=>{ e.target.value=e.target.value.replace(/\D/g,'').slice(0,11); });
+function doSignup(){
+  const name=$('suName').value.trim();
+  const dept=$('suDept').value;
+  const phone=$('suPhone').value.trim();
+  if(!name){ toast('请填写姓名'); return; }
+  if(!/^1\d{10}$/.test(phone)){ toast('请填写 11 位有效手机号'); return; }
+  const exist=state.participants.find(p=>p.phone===phone);
+  if(exist){
+    if(exist.isBlack){ toast('该手机号已被列入黑名单，无法参与'); return; }
+    state.currentUser=exist;
+    state.chances[exist.id]=state.chances[exist.id]??2;
+    toast(`欢迎回来，${exist.name}！已为你直接登录`);
+  }else{
+    const p={id:Date.now(),name,dept,phone,isWhite:false,isBlack:false,chance:0,source:'自主报名'};
+    state.participants.push(p);
+    state.currentUser=p;
+    state.chances[p.id]=2;
+    state.tapOpponents=null;
+    toast('🎉 报名成功！已赠送 2 次抽奖机会');
+  }
+  $('suName').value=''; $('suPhone').value='';
+  showPoster('main');
+  renderAppHead(); renderAdmin(); renderRollGrid();
+  switchScreen('mobile'); gotoView('view-home');
 }
 
 /* =====================================================
@@ -998,6 +1125,7 @@ function gotoView(id){
 }
 function renderAppHead(){
   const u=state.currentUser;
+  $('homeSignup').style.display = u ? 'none' : 'block';
   if(!u) return;
   $('appAvatar').textContent=u.name[0];
   $('appName').textContent=maskName(u.name);
@@ -1391,8 +1519,8 @@ function cfLoop(){
 /* =====================================================
    管理后台
 ===================================================== */
-document.querySelectorAll('.admin-nav button').forEach(b=>b.addEventListener('click',()=>{
-  document.querySelectorAll('.admin-nav button').forEach(x=>x.classList.remove('active'));
+document.querySelectorAll('.admin-nav button[data-pane]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.admin-nav button[data-pane]').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.admin-pane').forEach(p=>p.classList.remove('active'));
   b.classList.add('active'); $(b.dataset.pane).classList.add('active');
   renderAdmin();
@@ -1601,6 +1729,7 @@ $('btnExport').addEventListener('click',()=>{
 function renderAdmin(){
   // KPI
   $('kpiPv').textContent=state.pv;
+  $('kpiOnline').textContent=state.online;
   $('kpiParticipants').textContent=state.participants.length;
   $('kpiGames').textContent=state.gameSessions.length;
   $('kpiWins').textContent=state.lotteryRecords.length;
@@ -1621,7 +1750,7 @@ function renderAdmin(){
   $('peopleTable').innerHTML=state.participants.slice(0,60).map(p=>`<tr>
     <td><input type="checkbox" class="row-chk" data-id="${p.id}" ${peopleSel.has(p.id)?'checked':''}></td>
     <td>${p.name}</td><td>${p.dept}</td><td>${p.phone}</td><td>${state.chances[p.id]||0}</td>
-    <td>${p.isWhite?'<span class="tag b">白名单</span>':'—'} ${p.isBlack?'<span class="tag r">黑名单</span>':''}</td>
+    <td>${p.isWhite?'<span class="tag b">白名单</span>':'—'} ${p.isBlack?'<span class="tag r">黑名单</span>':''} ${p.source==='自主报名'?'<span class="tag a">报名</span>':''}</td>
     <td><button class="btn btn-ghost btn-sm" onclick="toggleFlag(${p.id},'isWhite')">白</button>
         <button class="btn btn-ghost btn-sm" onclick="toggleFlag(${p.id},'isBlack')">黑</button>
         <button class="btn btn-red btn-sm" onclick="delParticipant(${p.id})">删</button></td>
@@ -1674,6 +1803,7 @@ setInterval(()=>{
   state.online=Math.max(120,state.online+Math.floor(rnd(-18,20)));
   onlineHist.push(state.online); onlineHist.shift();
   $('bsOnline').textContent=state.online;
+  if($('kpiOnline')) $('kpiOnline').textContent=state.online;
   if($('screen-admin').classList.contains('active')&&$('pane-dash').classList.contains('active')) drawOnline();
 },1500);
 function drawOnline(){
@@ -1691,6 +1821,9 @@ function drawOnline(){
 
 renderAdmin();
 $('bsOnline').textContent=state.online;
+updateAdminAuth();
+fillDeptOptions();
+renderAppHead();
 </script>
 </body>
 </html>
