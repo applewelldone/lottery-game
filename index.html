@@ -614,11 +614,11 @@
       <div class="admin-pane active" id="pane-dash">
         <div class="pane-title">📊 实时数据看板</div>
         <div class="kpis">
-          <div class="kpi"><div class="v" id="kpiPv">0</div><div class="l">扫码 PV</div><div class="t">↑ 12.4% 同比昨日</div></div>
+          <div class="kpi"><div class="v" id="kpiPv">0</div><div class="l">扫码 PV</div><div class="t">实时累计</div></div>
           <div class="kpi"><div class="v" id="kpiOnline">0</div><div class="l">在线访客</div><div class="t">模拟数据 · 非报名人数</div></div>
           <div class="kpi"><div class="v" id="kpiParticipants">0</div><div class="l">名单人数</div><div class="t">导入 + 自主报名</div></div>
-          <div class="kpi"><div class="v" id="kpiGames">0</div><div class="l">游戏对局</div><div class="t">人均 2.1 局</div></div>
-          <div class="kpi"><div class="v" id="kpiWins">0</div><div class="l">中奖人次</div><div class="t">核销率 76%</div></div>
+          <div class="kpi"><div class="v" id="kpiGames">0</div><div class="l">游戏对局</div><div class="t" id="kpiGamesAvg">人均 0 局</div></div>
+          <div class="kpi"><div class="v" id="kpiWins">0</div><div class="l">中奖人次</div><div class="t" id="kpiRedeemRate">核销率 0%</div></div>
         </div>
         <p class="muted" style="font-size:12px;margin:-6px 0 14px">口径说明：「当前在线」为实时访客模拟数，与大屏抽奖页展示的是同一个数字；「名单人数」为后台导入 + 用户自主报名的总人数，两者统计维度不同。</p>
         <div class="chart-box"><h4>参与漏斗</h4><canvas id="funnelChart" height="200"></canvas></div>
@@ -687,6 +687,7 @@
           <div class="ops" style="margin-bottom:10px">
             <button class="btn btn-red btn-sm" id="btnDelSelected" disabled>🗑 批量删除所选（<span id="selCount">0</span>）</button>
             <button class="btn btn-ghost btn-sm" id="btnDelAll">⚠️ 删除所有人</button>
+            <button class="btn btn-ghost btn-sm" id="btnResetAll" title="清空本机保存的数据，恢复到初始 48 人演示状态">♻️ 恢复初始数据</button>
           </div>
           <div style="max-height:380px;overflow:auto">
             <table><thead><tr>
@@ -771,6 +772,7 @@ const state = {
 
 const $ = id => document.getElementById(id);
 const maskName = n => n.length<=1 ? n : n[0]+'*'.repeat(n.length-1);
+const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));  // 防 XSS：用户数据入库前转义
 const rnd = (a,b)=>a+Math.random()*(b-a);
 const pick = arr => arr[Math.floor(Math.random()*arr.length)];
 
@@ -797,11 +799,40 @@ function defaultPrizes(){
     {id:5, level:'幸运奖',   name:'10 元优惠券',   stock:50,weight:60,limit:3, won:0}
   ];
 }
-state.participants = genParticipants(48);
-state.prizes = defaultPrizes();
-state.currentPrizeId = state.prizes[0] ? state.prizes[0].id : null;
-state.participants[0].isWhite = true;
-initChances(state.participants);          // 每人 1 次基础抽奖机会
+/* ---------- 本地持久化：删除/导入/开奖等操作刷新不丢 ---------- */
+const STATE_KEY='mk_state_v1';
+function saveState(){
+  try{
+    const {tapOpponents,...rest}=state;              // tapOpponents 是派生缓存，不落盘
+    localStorage.setItem(STATE_KEY,JSON.stringify(rest));
+  }catch(e){ console.warn('状态保存失败（本地存储配额不足）',e); }
+}
+function loadState(){
+  try{
+    const raw=localStorage.getItem(STATE_KEY);
+    if(!raw) return false;
+    const snap=JSON.parse(raw);
+    if(!snap||!Array.isArray(snap.participants)||!Array.isArray(snap.prizes)) return false;
+    Object.assign(state,snap);
+    state.participants.forEach(p=>{ if(state.chances[p.id]==null) state.chances[p.id]=1; });  // 兼容缺漏的机会数
+    if(state.currentUser){                            // 反序列化后是副本，指回名单内同一对象
+      const p=state.participants.find(x=>x.id===state.currentUser.id);
+      state.currentUser=p||null;
+    }
+    if(!state.round||typeof state.round!=='object') state.round={status:'idle',wins:[]};
+    state.round.status='idle';                            // 刷新时若正在滚动，强制复位避免卡死
+    state.tapOpponents=null;
+    return true;
+  }catch(e){ return false; }
+}
+const hasSavedState=loadState();                       // 优先恢复本地数据
+if(!hasSavedState){                                    // 无本地数据才生成演示默认值
+  state.participants = genParticipants(48);
+  state.prizes = defaultPrizes();
+  state.currentPrizeId = state.prizes[0] ? state.prizes[0].id : null;
+  state.participants[0].isWhite = true;
+  initChances(state.participants);          // 每人 1 次基础抽奖机会
+}
 
 /* ---------- 抽奖机会 ---------- */
 function initChances(list){ list.forEach(p=>{ state.chances[p.id]=1; p.chance=1; }); }
@@ -838,7 +869,8 @@ document.querySelectorAll('.topnav .tab').forEach(tab=>{
 ===================================================== */
 if(location.hash==='#join'){
   document.body.classList.add('join-mode');
-  switchScreen('scan'); showPoster('signup');      // 扫码直达报名表单
+  if(state.currentUser){ switchScreen('mobile'); gotoView('view-home'); }   // 已报名：刷新后继续游戏
+  else { switchScreen('scan'); showPoster('signup'); }                      // 未报名：直达报名表单
 }
 
 /* =====================================================
@@ -1093,6 +1125,7 @@ function login(way){
   if(!eligible.length){ toast('名单为空，请先报名或让后台导入人员'); return; }
   state.currentUser = pick(eligible);
   state.chances[state.currentUser.id] = state.chances[state.currentUser.id] ?? 1;
+  state.pv++;                                    // 扫码 PV 实时累计
   toast(`✅ ${way}登录成功，当前有 ${chanceOf(state.currentUser.id)} 次抽奖机会`);
   switchScreen('mobile');
   renderAppHead();
@@ -1132,6 +1165,7 @@ function doSignup(){
     toast('🎉 报名成功！已赠送 1 次抽奖机会');
   }
   $('suName').value=''; $('suPhone').value='';
+  state.pv++;                                    // 扫码 PV 实时累计
   showPoster('main');
   renderAppHead(); renderAdmin(); renderRollGrid();
   switchScreen('mobile'); gotoView('view-home');
@@ -1166,6 +1200,7 @@ function renderAppHead(){
   if($('tapRank')) $('tapRank').textContent='第 '+tapRankOf(state.bestTap)+' 名';
   if($('shakeBest2')) $('shakeBest2').textContent=state.bestShake||0;
   if($('shakeRank')) $('shakeRank').textContent='第 '+shakeRankOf(state.bestShake||0)+' 名';
+  saveState();                                          // 登录态/机会数变更 → 落盘
 }
 
 /* ---------- 拼手速游戏（大屏互动玩法） ---------- */
@@ -1230,7 +1265,7 @@ function updateBsRank(myScore,key){
   me[key]=myScore;
   const top=[me,...getOpponents()].sort((a,b)=>b[key]-a[key]).slice(0,5);
   $('bsGameRank').innerHTML=top.map((o,i)=>
-    `<li class="${o.me?'me':''}"><span><span class="no">${i+1}</span>${maskName(o.name)}</span><span>${o[key]}</span></li>`).join('');
+    `<li class="${o.me?'me':''}"><span><span class="no">${i+1}</span>${esc(maskName(o.name))}</span><span>${o[key]}</span></li>`).join('');
 }
 function endTapGame(){
   if(tapS.phase!=='play') return;
@@ -1355,10 +1390,10 @@ function renderMyPrizes(){
   box.innerHTML=mine.map(r=>`
     <div class="prize-item">
       <div class="pi">🎁</div>
-      <div style="flex:1"><div class="pt">${r.level?`<span class="tag r" style="margin-right:6px">${r.level}</span>`:''}${r.prize}</div>
-        <div class="pd">${r.time} · ${r.source}</div></div>
+      <div style="flex:1"><div class="pt">${r.level?`<span class="tag r" style="margin-right:6px">${esc(r.level)}</span>`:''}${esc(r.prize)}</div>
+        <div class="pd">${r.time} · ${esc(r.source)}</div></div>
       <div style="text-align:right">
-        <span class="redeem-code">${r.code}</span><br>
+        <span class="redeem-code">${esc(r.code)}</span><br>
         <span class="tag ${r.status==='待核销'?'a':'g'}">${r.status}</span></div>
     </div>`).join('');
 }
@@ -1373,7 +1408,7 @@ function currentPrize(){
 function prizeStatusText(){
   const p=currentPrize();
   if(!p) return '⚠️ 暂无可用奖品，请先到后台添加';
-  return `🎊 当前奖项：<b>${p.level||'参与奖'}</b> · ${p.name}（剩 ${p.stock}）`;
+  return `🎊 当前奖项：<b>${esc(p.level||'参与奖')}</b> · ${esc(p.name)}（剩 ${p.stock}）`;
 }
 function renderPrizeCarousel(){
   const track=$('prizeTrack'); if(!track) return;
@@ -1386,8 +1421,8 @@ function renderPrizeCarousel(){
     return `<div class="pcard ${p.id===state.currentPrizeId?'selected':''} ${p.stock<=0?'soldout':''}" data-id="${p.id}">
       <span class="sel-tag">本轮抽奖</span>
       ${p.stock<=0?'<span class="done">已抽完</span>':''}
-      <div class="pl">${p.level||'参与奖'}</div>
-      <div class="pn">${p.name}</div>
+      <div class="pl">${esc(p.level||'参与奖')}</div>
+      <div class="pn">${esc(p.name)}</div>
       <div class="ps">剩余 <b>${p.stock}</b> / ${total}</div>
     </div>`;
   }).join('');
@@ -1407,6 +1442,7 @@ function selectPrize(id,scroll=true){
     $('btnStartRoll').textContent = p ? `开始抽奖 · ${p.level||'参与奖'}` : '开始抽奖';
   if($('rollStatus') && state.round.status!=='rolling')
     $('rollStatus').innerHTML = prizeStatusText()+' · 点击「开始抽奖」启动名单滚动';
+  saveState();                                          // 当前奖项选择 → 落盘
 }
 function shiftPrize(d){
   if(!state.prizes.length) return;
@@ -1432,7 +1468,7 @@ function renderRollGrid(highlightIdx){
   for(let i=0;i<12;i++){
     const p=pool.length?pool[Math.floor(Math.random()*pool.length)]:null;
     html+=`<div class="roll-cell ${highlightIdx===i?'hot':''}">
-      <div class="n">${p?maskName(p.name):'—'}</div><div class="d">${p?p.dept:''}</div></div>`;
+      <div class="n">${p?esc(maskName(p.name)):'—'}</div><div class="d">${p?esc(p.dept):''}</div></div>`;
   }
   grid.innerHTML=html;
 }
@@ -1532,14 +1568,14 @@ function renderWinnerFeed(){
   const ul=$('winnerFeed');
   const list=[...state.lotteryRecords].reverse().slice(0,30);
   if(!list.length){ ul.innerHTML='<li class="muted" style="border:none">等待第一位幸运儿…</li>'; return; }
-  ul.innerHTML=list.map(r=>`<li><span class="w-name">${maskName(r.name)}</span>
-    <span class="w-prize">${r.level?r.level+' · ':''}${r.prize}<br><span class="muted">${r.time}</span></span></li>`).join('');
+  ul.innerHTML=list.map(r=>`<li><span class="w-name">${esc(maskName(r.name))}</span>
+    <span class="w-prize">${r.level?esc(r.level)+' · ':''}${esc(r.prize)}<br><span class="muted">${r.time}</span></span></li>`).join('');
 }
 function renderPrizeProgress(){
   const box=$('prizeProgress');
   box.innerHTML=state.prizes.map(p=>{
     const total=p.stock+p.won, pct=total?Math.round(p.won/total*100):0;
-    return `<div class="pp-row"><span>${p.level?'<b style="color:var(--gold)">'+p.level+'</b> · ':''}${p.name}</span><span>${p.won}/${total}</span></div>
+    return `<div class="pp-row"><span>${p.level?'<b style="color:var(--gold)">'+esc(p.level)+'</b> · ':''}${esc(p.name)}</span><span>${p.won}/${total}</span></div>
             <div class="pp-bar"><i style="width:${pct}%"></i></div>`;
   }).join('');
   renderPrizeCarousel();
@@ -1620,6 +1656,7 @@ $('cfgBgFile').addEventListener('change',e=>{
   rd.readAsDataURL(f);
 });
 $('btnClearBg').addEventListener('click',()=>{
+  if(!confirm('确定清除已上传的背景图吗？清除后需重新上传。')) return;
   $('cfgBgFile').value=''; applyBg(null,true); toast('已清除背景图，恢复默认渐变背景');
 });
 /* 启动时恢复上次上传的背景（同一浏览器，刷新不丢失） */
@@ -1635,7 +1672,8 @@ $('btnSaveActivity').addEventListener('click',()=>{
   state.activity.status=$('cfgStatus').value;
   $('bsActivityName').textContent=state.activity.name;
   $('posterTitle').textContent=state.activity.name.replace(/ ·.*/,'');
-  $('posterRules').innerHTML=state.activity.rules.replace(/\n/g,'<br>');
+  $('posterRules').innerHTML=esc(state.activity.rules).replace(/\n/g,'<br>');
+  saveState();
   toast('✅ 配置已保存，大屏与扫码页已同步');
 });
 
@@ -1648,14 +1686,18 @@ $('btnAddPrize').addEventListener('click',()=>{
   $('prName').value=''; $('prLevel').value=''; renderAdmin(); renderPrizeProgress(); toast('奖品已添加');
 });
 function delPrize(id){
-  if(state.lotteryRecords.some(r=>state.prizes.find(p=>p.id===id)?.name===r.prize)){ toast('该奖品已产生中奖记录，不可删除'); return; }
+  if(state.lotteryRecords.some(r=>r.prizeId===id)){ toast('该奖品已产生中奖记录，不可删除'); return; }
   state.prizes=state.prizes.filter(p=>p.id!==id);
   if(state.currentPrizeId===id) state.currentPrizeId=state.prizes[0]?state.prizes[0].id:null;
-  renderAdmin(); renderPrizeProgress(); selectPrize(state.currentPrizeId,false);
+  renderAdmin(); renderPrizeProgress(); selectPrize(state.currentPrizeId,false); saveState();
 }
 
 /* ---------- 人员名单 ---------- */
-$('btnGen50').addEventListener('click',()=>{ state.participants=genParticipants(50); state.chances={}; initChances(state.participants); state.tapOpponents=null; renderAdmin(); toast('已生成 50 条模拟名单（每人 1 次机会）'); });
+$('btnGen50').addEventListener('click',()=>{
+  if(!confirm('将覆盖当前全部名单与抽奖机会，重新生成 50 条模拟数据，确定吗？')) return;
+  state.participants=genParticipants(50); state.chances={}; initChances(state.participants); state.tapOpponents=null;
+  renderRollGrid(); renderAdmin(); toast('已生成 50 条模拟名单（每人 1 次机会）');
+});
 $('btnGrantAll').addEventListener('click',()=>{
   const list=state.participants.filter(p=>!p.isBlack);
   if(!list.length){ toast('名单为空，无可补充机会的人员'); return; }
@@ -1666,15 +1708,19 @@ $('btnGrantAll').addEventListener('click',()=>{
 });
 $('btnImport').addEventListener('click',()=>{
   const lines=$('importText').value.trim().split('\n').filter(Boolean);
-  let ok=0,fail=0;
+  let ok=0,fail=0,dup=0;
+  const phones=new Set(state.participants.map(p=>p.phone).filter(x=>x&&x!=='—'));   // 手机号查重
   lines.forEach(l=>{
     const [name,dept,phone]=l.split(/[,，\t]/).map(s=>s?.trim());
-    if(name&&dept){ const p={id:Date.now()+Math.random(),name,dept,phone:phone||'—',isWhite:false,isBlack:false,chance:1,source:'后台导入'};
-      state.participants.push(p); state.chances[p.id]=1; ok++; }
+    if(name&&dept){
+      if(phone&&phones.has(phone)){ dup++; return; }                    // 已存在的手机号跳过
+      const p={id:Date.now()+Math.random(),name,dept,phone:phone||'—',isWhite:false,isBlack:false,chance:1,source:'后台导入'};
+      state.participants.push(p); state.chances[p.id]=1; if(phone) phones.add(phone); ok++;
+    }
     else fail++;
   });
-  $('importText').value=''; state.tapOpponents=null; renderAdmin();
-  toast(`导入完成：成功 ${ok} 条${fail?`，失败 ${fail} 条（缺少姓名/部门）`:''}（每人 1 次机会）`);
+  $('importText').value=''; state.tapOpponents=null; renderRollGrid(); renderAdmin();
+  toast(`导入完成：成功 ${ok} 条${dup?`，跳过重复 ${dup} 条（手机号已存在）`:''}${fail?`，失败 ${fail} 条（缺少姓名/部门）`:''}（每人 1 次机会）`);
 });
 function toggleFlag(id,field){
   const p=state.participants.find(x=>x.id===id); if(p) p[field]=!p[field];
@@ -1715,6 +1761,11 @@ function delAllPeople(){
 }
 $('btnDelSelected').addEventListener('click',delSelected);
 $('btnDelAll').addEventListener('click',delAllPeople);
+$('btnResetAll').addEventListener('click',()=>{
+  if(!confirm('将清空本机保存的全部数据（名单 / 奖品 / 中奖记录 / 抽奖机会），恢复初始演示状态。确定吗？')) return;
+  localStorage.removeItem(STATE_KEY);
+  location.reload();
+});
 $('chkAll').addEventListener('change',e=>{
   const on=e.target.checked;
   document.querySelectorAll('#peopleTable .row-chk').forEach(cb=>{
@@ -1791,20 +1842,25 @@ $('btnExport').addEventListener('click',()=>{
 ===================================================== */
 function renderAdmin(){
   // KPI
+  const nonBlack=state.participants.filter(p=>!p.isBlack).length;
+  const redeemed=state.lotteryRecords.filter(r=>r.status==='已核销').length;
   $('kpiPv').textContent=state.pv;
   $('kpiOnline').textContent=state.online;
   $('kpiParticipants').textContent=state.participants.length;
   $('kpiGames').textContent=state.gameSessions.length;
   $('kpiWins').textContent=state.lotteryRecords.length;
+  if($('kpiGamesAvg')) $('kpiGamesAvg').textContent='人均 '+(state.gameSessions.length/Math.max(1,nonBlack)).toFixed(1)+' 局';
+  if($('kpiRedeemRate')) $('kpiRedeemRate').textContent=state.lotteryRecords.length
+    ? '核销率 '+Math.round(redeemed/state.lotteryRecords.length*100)+'%' : '暂无中奖';
   // 奖品表
   $('prizeTable').innerHTML=state.prizes.map(p=>`<tr>
-    <td><span class="tag r">${p.level||'参与奖'}</span></td><td>${p.name}</td><td>${p.stock}</td><td>${p.weight}</td><td>${p.limit}</td>
+    <td><span class="tag r">${esc(p.level||'参与奖')}</span></td><td>${esc(p.name)}</td><td>${p.stock}</td><td>${p.weight}</td><td>${p.limit}</td>
     <td>${p.won}</td><td><button class="btn btn-ghost btn-sm" onclick="delPrize(${p.id})">删除</button></td>
   </tr>`).join('')||'<tr><td colspan="7" class="muted" style="text-align:center">暂无奖品</td></tr>';
   // 后台奖项下拉（与大屏同步）
   const dp=$('drawPrize');
   if(dp) dp.innerHTML=state.prizes.map(p=>
-    `<option value="${p.id}" ${p.id===state.currentPrizeId?'selected':''}>${p.level||'参与奖'} · ${p.name}（剩 ${p.stock}）</option>`).join('')
+    `<option value="${p.id}" ${p.id===state.currentPrizeId?'selected':''}>${esc(p.level||'参与奖')} · ${esc(p.name)}（剩 ${p.stock}）</option>`).join('')
     ||'<option value="">暂无奖品</option>';
   // 名单表
   $('peopleTotal').textContent=state.participants.length;
@@ -1812,7 +1868,7 @@ function renderAdmin(){
   $('peopleShown').textContent=state.participants.length>60?`（名单较多，仅显示前 60 条，共 ${state.participants.length} 人）`:'';
   $('peopleTable').innerHTML=state.participants.slice(0,60).map(p=>`<tr>
     <td><input type="checkbox" class="row-chk" data-id="${p.id}" ${peopleSel.has(p.id)?'checked':''}></td>
-    <td>${p.name}</td><td>${p.dept}</td><td>${p.phone}</td>
+    <td>${esc(p.name)}</td><td>${esc(p.dept)}</td><td>${esc(p.phone)}</td>
     <td><b style="color:${chanceOf(p.id)>0?'var(--green)':'var(--ink3)'}">${chanceOf(p.id)}</b>
         <button class="btn btn-ghost btn-sm" style="padding:1px 6px;font-size:11px;margin-left:4px" onclick="grantOne(${p.id})" title="补充 1 次抽奖机会">+</button></td>
     <td>${p.isWhite?'<span class="tag b">白名单</span>':'—'} ${p.isBlack?'<span class="tag r">黑名单</span>':''} ${p.source==='自主报名'?'<span class="tag a">报名</span>':''}</td>
@@ -1824,7 +1880,7 @@ function renderAdmin(){
   // 手动指定下拉
   const sel=$('manualWinner');
   const whites=state.participants.filter(p=>p.isWhite);
-  sel.innerHTML=whites.map(p=>`<option value="${p.id}">${p.name}（${p.dept} · 剩 ${chanceOf(p.id)} 次）</option>`).join('')
+  sel.innerHTML=whites.map(p=>`<option value="${p.id}">${esc(p.name)}（${esc(p.dept)} · 剩 ${chanceOf(p.id)} 次）</option>`).join('')
     ||'<option value="">暂无白名单成员</option>';
   // 抽奖池信息
   const total=state.participants.filter(p=>!p.isBlack).length;
@@ -1832,18 +1888,19 @@ function renderAdmin(){
   $('poolInfo').innerHTML=`可抽奖 <b>${avail}</b> 人 / 名单 ${total} 人`;
   // 本场已中奖
   $('roundWinTable').innerHTML=state.round.wins.map(r=>`<tr>
-    <td>${r.name}</td><td>${r.dept}</td><td>${r.level?`<span class="tag r">${r.level}</span>`:'—'}</td><td>${r.prize}</td><td>${r.time}</td></tr>`).join('')
+    <td>${esc(r.name)}</td><td>${esc(r.dept)}</td><td>${r.level?`<span class="tag r">${esc(r.level)}</span>`:'—'}</td><td>${esc(r.prize)}</td><td>${r.time}</td></tr>`).join('')
     ||'<tr><td colspan="5" class="muted" style="text-align:center">本场还未开奖</td></tr>';
   // 中奖记录
   $('recordTotal').textContent=state.lotteryRecords.length;
   $('recordPending').textContent=state.lotteryRecords.filter(r=>r.status==='待核销').length;
   $('recordTable').innerHTML=[...state.lotteryRecords].reverse().map(r=>`<tr>
-    <td>${maskName(r.name)}</td><td>${r.dept}</td><td>${r.level?`<span class="tag r">${r.level}</span>`:'—'}</td><td>${r.prize}</td>
-    <td><span class="redeem-code">${r.code}</span></td>
+    <td>${esc(maskName(r.name))}</td><td>${esc(r.dept)}</td><td>${r.level?`<span class="tag r">${esc(r.level)}</span>`:'—'}</td><td>${esc(r.prize)}</td>
+    <td><span class="redeem-code">${esc(r.code)}</span></td>
     <td><span class="tag ${r.status==='待核销'?'a':'g'}">${r.status}</span></td>
     <td>${r.status==='待核销'?`<button class="btn btn-green btn-sm" onclick="redeem(${r.id})">核销</button>`:'—'}</td>
   </tr>`).join('')||'<tr><td colspan="7" class="muted" style="text-align:center">暂无中奖记录</td></tr>';
   drawFunnel(); drawOnline();
+  saveState();                                          // 后台任何变更 → 落盘
 }
 
 /* ---------- 图表 ---------- */
