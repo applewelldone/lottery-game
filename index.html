@@ -625,9 +625,15 @@
           <span class="muted" style="margin-left:8px">共 <b id="peopleTotal">0</b> 人 · 黑名单 <b id="blackTotal">0</b> 人</span>
         </div>
         <div class="panel">
-          <h3>名单列表</h3>
+          <h3>名单列表 <span class="muted" id="peopleShown" style="font-weight:400;font-size:12px"></span></h3>
+          <div class="ops" style="margin-bottom:10px">
+            <button class="btn btn-red btn-sm" id="btnDelSelected" disabled>🗑 批量删除所选（<span id="selCount">0</span>）</button>
+            <button class="btn btn-ghost btn-sm" id="btnDelAll">⚠️ 删除所有人</button>
+          </div>
           <div style="max-height:380px;overflow:auto">
-            <table><thead><tr><th>姓名</th><th>部门</th><th>手机号</th><th>机会</th><th>标记</th><th>操作</th></tr></thead>
+            <table><thead><tr>
+              <th style="width:34px"><input type="checkbox" id="chkAll" title="全选 / 取消全选（当前显示的行）"></th>
+              <th>姓名</th><th>部门</th><th>手机号</th><th>机会</th><th>标记</th><th>操作</th></tr></thead>
             <tbody id="peopleTable"></tbody></table>
           </div>
         </div>
@@ -767,18 +773,199 @@ document.addEventListener('webkitfullscreenchange',onFsChange);
 /* =====================================================
    扫码入口
 ===================================================== */
-(function drawQR(){
-  const c=$('qrCanvas'), ctx=c.getContext('2d'), n=21, cell=150/n;
-  ctx.fillStyle='#fff'; ctx.fillRect(0,0,150,150); ctx.fillStyle='#17121f';
-  let seed=42; const rand=()=> (seed=(seed*1103515245+12345)&0x7fffffff)/0x7fffffff;
-  for(let y=0;y<n;y++) for(let x=0;x<n;x++){
-    const inFinder=(x<7&&y<7)||(x>n-8&&y<7)||(x<7&&y>n-8);
-    if(!inFinder && rand()>0.52) ctx.fillRect(x*cell,y*cell,cell,cell);
+/* =====================================================
+   真实二维码（QR Code）编码器 —— 字节模式 · ECC M · 版本 1-10 自动选择
+   纯手写实现，无外部依赖，扫码可打开当前活动页地址
+===================================================== */
+const QR_ECC_M = { 1:[10,1], 2:[16,1], 3:[26,1], 4:[18,2], 5:[24,2],
+                   6:[16,4], 7:[18,4], 8:[22,4], 9:[22,5], 10:[26,5] }; // [每块EC码字数, 块数]
+const QR_TOTAL_CW = [0,26,44,70,100,134,172,196,242,292,346];           // 各版本总码字
+const QR_ALIGN = { 1:[], 2:[6,18], 3:[6,22], 4:[6,26], 5:[6,30],
+                   6:[6,34], 7:[6,22,38], 8:[6,24,42], 9:[6,26,46], 10:[6,28,50] };
+
+function qrEncode(text){
+  const bytes = new TextEncoder().encode(text);
+  // 选择最小可容纳版本（4 位模式 + 8 位长度 + 数据）
+  let ver = 0;
+  for(let v=1; v<=10; v++){
+    const rawCW = QR_TOTAL_CW[v] - QR_ECC_M[v][0]*QR_ECC_M[v][1];
+    if(4 + 8 + bytes.length*8 <= rawCW*8){ ver = v; break; }
   }
-  const finder=(fx,fy)=>{ ctx.fillStyle='#17121f'; ctx.fillRect(fx*cell,fy*cell,7*cell,7*cell);
-    ctx.fillStyle='#fff'; ctx.fillRect((fx+1)*cell,(fy+1)*cell,5*cell,5*cell);
-    ctx.fillStyle='#c62f1c'; ctx.fillRect((fx+2)*cell,(fy+2)*cell,3*cell,3*cell); };
-  finder(0,0); finder(n-7,0); finder(0,n-7);
+  if(!ver) return null;
+  const size = 17 + 4*ver;
+  const [ecLen, numBlocks] = QR_ECC_M[ver];
+  const rawCW = QR_TOTAL_CW[ver] - ecLen*numBlocks;
+  const capacityBits = rawCW*8;
+
+  /* ---- 数据位流 ---- */
+  const bits = [];
+  const push = (val,n)=>{ for(let i=n-1;i>=0;i--) bits.push((val>>>i)&1); };
+  push(4,4);                                  // 字节模式
+  push(bytes.length,8);                       // 字符计数（v1-9 为 8 位）
+  bytes.forEach(b=>push(b,8));
+  push(0, Math.min(4, capacityBits-bits.length)); // 终止符
+  while(bits.length%8) bits.push(0);
+  const dataCW = [];
+  for(let i=0;i<bits.length;i+=8){
+    let b=0; for(let j=0;j<8;j++) b=(b<<1)|bits[i+j];
+    dataCW.push(b);
+  }
+  const PADS=[0xEC,0x11]; let pi=0;
+  while(dataCW.length<rawCW) dataCW.push(PADS[pi++%2]);
+
+  /* ---- GF(256) 与 RS 纠错 ---- */
+  const EXP=new Array(512), LOG=new Array(256);
+  { let x=1; for(let i=0;i<255;i++){ EXP[i]=x; LOG[x]=i; x<<=1; if(x&0x100)x^=0x11D; }
+    for(let i=255;i<512;i++) EXP[i]=EXP[i-255]; }
+  const gfMul=(a,b)=>(!a||!b)?0:EXP[LOG[a]+LOG[b]];
+  const genPoly=deg=>{ let g=[1];                       // 降幂，首项 1
+    for(let i=0;i<deg;i++){ const ng=new Array(g.length+1).fill(0);
+      for(let j=0;j<g.length;j++){ ng[j]^=g[j]; ng[j+1]^=gfMul(g[j],EXP[i]); }
+      g=ng; } return g; };
+  const rsRem=(data,gen)=>{ const res=new Array(gen.length-1).fill(0);
+    for(const b of data){ const k=b^res[0]; res.shift(); res.push(0);
+      for(let j=0;j<res.length;j++) res[j]^=gfMul(gen[j+1],k); } return res; };
+
+  const shortLen=Math.floor(rawCW/numBlocks), numShort=numBlocks-rawCW%numBlocks;
+  const blocks=[]; let pos=0;
+  for(let b=0;b<numBlocks;b++){
+    const len=b<numShort?shortLen:shortLen+1;
+    blocks.push(dataCW.slice(pos,pos+len)); pos+=len;
+  }
+  const gen=genPoly(ecLen);
+  const eccs=blocks.map(b=>rsRem(b,gen));
+  const cw=[];
+  const maxLen=Math.max(...blocks.map(b=>b.length));
+  for(let i=0;i<maxLen;i++) blocks.forEach(b=>{ if(i<b.length) cw.push(b[i]); });
+  for(let i=0;i<ecLen;i++) eccs.forEach(e=>cw.push(e[i]));
+
+  /* ---- 构建矩阵 ---- */
+  const mod=Array.from({length:size},()=>new Array(size).fill(false));
+  const fn=Array.from({length:size},()=>new Array(size).fill(false));
+  const setF=(r,c,v)=>{ mod[r][c]=v; fn[r][c]=true; };
+  // 定位图形 + 分隔符
+  for(const [fr,fc] of [[0,0],[0,size-7],[size-7,0]])
+    for(let r=-1;r<=7;r++) for(let c=-1;c<=7;c++){
+      const rr=fr+r, cc=fc+c;
+      if(rr<0||cc<0||rr>=size||cc>=size) continue;
+      const dark=(r>=0&&r<=6&&c>=0&&c<=6)&&(r===0||r===6||c===0||c===6||(r>=2&&r<=4&&c>=2&&c<=4));
+      setF(rr,cc,dark);
+    }
+  // 定位图形
+  for(let i=8;i<size-8;i++){ setF(6,i,i%2===0); setF(i,6,i%2===0); }
+  // 校正图形
+  for(const r of QR_ALIGN[ver]) for(const c of QR_ALIGN[ver]){
+    if((r===6&&c===6)||(r===6&&c===size-7)||(r===size-7&&c===6)) continue;
+    for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++)
+      setF(r+dr,c+dc,Math.max(Math.abs(dr),Math.abs(dc))!==1);
+  }
+  // 预留格式信息区 + 版本信息区
+  for(let i=0;i<=8;i++){ if(!fn[i][8]) setF(i,8,false); if(!fn[8][i]) setF(8,i,false); }
+  for(let i=0;i<8;i++){ setF(8,size-1-i,false); setF(size-1-i,8,false); }
+  if(ver>=7) for(let i=0;i<18;i++){ const a=Math.floor(i/3), b=size-11+(i%3); setF(a,b,false); setF(b,a,false); }
+
+  /* ---- 数据填充（Z 字形）---- */
+  const dbits=[]; cw.forEach(b=>{ for(let i=7;i>=0;i--) dbits.push((b>>>i)&1); });
+  let bi=0;
+  for(let right=size-1; right>=1; right-=2){
+    if(right===6) right=5;
+    for(let vert=0; vert<size; vert++) for(let j=0;j<2;j++){
+      const c=right-j, upward=((right+1)&2)===0, r=upward?size-1-vert:vert;
+      if(!fn[r][c] && bi<dbits.length){ mod[r][c]=dbits[bi]===1; bi++; }
+    }
+  }
+
+  /* ---- 掩码 + 评分选优 ---- */
+  const MASKS=[
+    (r,c)=>((r+c)%2)===0,
+    (r,c)=>(r%2)===0,
+    (r,c)=>(c%3)===0,
+    (r,c)=>((r+c)%3)===0,
+    (r,c)=>(Math.floor(r/2)+Math.floor(c/3))%2===0,
+    (r,c)=>((r*c)%2+(r*c)%3)===0,
+    (r,c)=>(((r*c)%2+(r*c)%3)%2)===0,
+    (r,c)=>(((r+c)%2+(r*c)%3)%2)===0,
+  ];
+  const bchFmt=d=>{ let rem=d<<10;
+    for(let i=14;i>=10;i--) if(rem&(1<<i)) rem^=0x537<<(i-10);
+    return ((d<<10)|rem)^0x5412; };
+  const bchVer=v=>{ let rem=v<<12;
+    for(let i=17;i>=12;i--) if(rem&(1<<i)) rem^=0x1F25<<(i-12);
+    return (v<<12)|rem; };
+  const drawInfo=(mask)=>{
+    const fmt=bchFmt((0b00<<3)|mask), bit=i=>(fmt>>>i)&1; // ECC M = 00
+    for(let i=0;i<6;i++) setF(i,8,!!bit(i));
+    setF(7,8,!!bit(6)); setF(8,8,!!bit(7)); setF(8,7,!!bit(8));
+    for(let i=9;i<15;i++) setF(8,14-i,!!bit(i));
+    for(let i=0;i<8;i++) setF(8,size-1-i,!!bit(i));
+    for(let i=8;i<15;i++) setF(size-15+i,8,!!bit(i));
+    setF(size-8,8,true); // 固定黑模块
+    if(ver>=7){ const vf=bchVer(ver), vb=i=>(vf>>>i)&1;
+      for(let i=0;i<18;i++){ const a=Math.floor(i/3), b=size-11+(i%3); setF(a,b,!!vb(i)); setF(b,a,!!vb(i)); } }
+  };
+  const penalty=m=>{
+    let score=0;
+    // 规则1：连续同色
+    for(let r=0;r<size;r++){ let run=1;
+      for(let c=1;c<size;c++){ const v=mod[r][c]^m(r,c);
+        if(v===(mod[r][c-1]^m(r,c-1))) run++; else { if(run>=5) score+=3+(run-5); run=1; } }
+      if(run>=5) score+=3+(run-5); }
+    for(let c=0;c<size;c++){ let run=1;
+      for(let r=1;r<size;r++){ const v=mod[r][c]^m(r,c);
+        if(v===(mod[r-1][c]^m(r-1,c))) run++; else { if(run>=5) score+=3+(run-5); run=1; } }
+      if(run>=5) score+=3+(run-5); }
+    // 规则2：2x2 同色块
+    for(let r=0;r<size-1;r++) for(let c=0;c<size-1;c++){
+      const v=mod[r][c]^m(r,c);
+      if(v===(mod[r][c+1]^m(r,c+1)) && v===(mod[r+1][c]^m(r+1,c)) && v===(mod[r+1][c+1]^m(r+1,c+1))) score+=3;
+    }
+    // 规则3：类定位图形序列
+    const P1=[true,false,true,true,true,false,true,false,false,false,false];
+    const P2=[false,false,false,false,true,false,true,true,true,false,true];
+    const match=(get,k)=>{
+      for(let i=0;i<size-10;i++){
+        let ok1=true, ok2=true;
+        for(let j=0;j<11;j++){ if(get(i+j)!==P1[j]) ok1=false; if(get(i+j)!==P2[j]) ok2=false; }
+        if(ok1||ok2) return true;
+      } return false; };
+    for(let r=0;r<size;r++){ const get=i=>mod[r][i]^m(r,i); if(match(get)) score+=40; }
+    for(let c=0;c<size;c++){ const get=i=>mod[i][c]^m(i,c); if(match(get)) score+=40; }
+    // 规则4：深色比例
+    let dark=0;
+    for(let r=0;r<size;r++) for(let c=0;c<size;c++) if(mod[r][c]^m(r,c)) dark++;
+    const pct=dark*100/(size*size);
+    score += 10*Math.floor(Math.abs(pct-50)/5);
+    return score;
+  };
+  let best=0, bestScore=Infinity;
+  for(let mk=0; mk<8; mk++){
+    const s=penalty(MASKS[mk]);
+    if(s<bestScore){ bestScore=s; best=mk; }
+  }
+  for(let r=0;r<size;r++) for(let c=0;c<size;c++)
+    if(!fn[r][c]) mod[r][c]=mod[r][c]^MASKS[best](r,c);
+  drawInfo(best);
+  return { size, modules: mod, mask: best };
+}
+
+/* ---- 渲染到画布（含 4 模块静区，支持高分屏）---- */
+(function drawQR(){
+  const c=$('qrCanvas'), ctx=c.getContext('2d');
+  const url=location.href.split('#')[0];
+  const qr=qrEncode(url);
+  if(!qr){ c.width=c.height=260; ctx.fillStyle='#fff'; ctx.fillRect(0,0,260,260);
+    ctx.fillStyle='#17121f'; ctx.font='13px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('二维码生成失败：地址过长',130,140); return; }
+  const QUIET=4, dim=qr.size+QUIET*2, css=260;
+  window.__qrSize=qr.size; window.__qrUrl=url; window.__qrMask=qr.mask;   // 调试/测试钩子
+  const dpr=window.devicePixelRatio||1;
+  const m=Math.max(1,Math.floor(css*dpr/dim));
+  c.width=dim*m; c.height=dim*m;
+  c.style.width=(dim*m/dpr)+'px'; c.style.height=(dim*m/dpr)+'px';
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,c.width,c.height);
+  ctx.fillStyle='#17121f';
+  for(let r=0;r<qr.size;r++) for(let col=0;col<qr.size;col++)
+    if(qr.modules[r][col]) ctx.fillRect((col+QUIET)*m,(r+QUIET)*m,m,m);
 })();
 
 $('btnWxLogin').addEventListener('click',()=>login('微信授权'));
@@ -1306,6 +1493,66 @@ function toggleFlag(id,field){
   renderAdmin();
 }
 
+/* ---------- 人员删除：单人 / 批量 / 全部 ---------- */
+const peopleSel=new Set();
+function removeParticipants(ids){
+  const set=new Set(ids);
+  const n=set.size;
+  state.participants=state.participants.filter(p=>!set.has(p.id));
+  ids.forEach(id=>{ delete state.chances[id]; peopleSel.delete(id); });
+  if(state.currentUser && set.has(state.currentUser.id)){   // 当前登录者被删 → 退出登录态
+    state.currentUser=null;
+    $('appAvatar').textContent='?'; $('appName').textContent='未登录'; $('appDept').textContent='—';
+    $('appChance').textContent='0'; $('homePlays').textContent='0';
+    gotoView('view-home');
+  }
+  state.tapOpponents=null;
+  renderRollGrid(); renderAdmin();
+  toast(`已删除 ${n} 人`);
+}
+function delParticipant(id){
+  const p=state.participants.find(x=>x.id===id); if(!p) return;
+  if(!confirm(`确定删除「${p.name}（${p.dept}）」？\n删除后不可恢复。`)) return;
+  removeParticipants([id]);
+}
+function delSelected(){
+  if(!peopleSel.size){ toast('请先勾选要删除的人员'); return; }
+  if(!confirm(`确定删除已勾选的 ${peopleSel.size} 人？\n删除后不可恢复。`)) return;
+  removeParticipants([...peopleSel]);
+}
+function delAllPeople(){
+  if(!state.participants.length){ toast('名单已是空的'); return; }
+  if(!confirm(`⚠️ 即将删除全部 ${state.participants.length} 人！\n删除后不可恢复，确定继续吗？`)) return;
+  removeParticipants(state.participants.map(p=>p.id));
+}
+$('btnDelSelected').addEventListener('click',delSelected);
+$('btnDelAll').addEventListener('click',delAllPeople);
+$('chkAll').addEventListener('change',e=>{
+  const on=e.target.checked;
+  document.querySelectorAll('#peopleTable .row-chk').forEach(cb=>{
+    cb.checked=on;
+    const id=+cb.dataset.id;
+    on?peopleSel.add(id):peopleSel.delete(id);
+  });
+  syncChkAll();
+});
+$('peopleTable').addEventListener('change',e=>{   // 事件委托，重渲染后仍有效
+  const cb=e.target;
+  if(!cb.classList.contains('row-chk')) return;
+  const id=+cb.dataset.id;
+  cb.checked?peopleSel.add(id):peopleSel.delete(id);
+  syncChkAll();
+});
+function syncChkAll(){
+  const boxes=[...document.querySelectorAll('#peopleTable .row-chk')];
+  const checked=boxes.filter(b=>b.checked).length;
+  const all=$('chkAll');
+  if(all){ all.checked=boxes.length>0&&checked===boxes.length;
+    all.indeterminate=checked>0&&checked<boxes.length; }
+  $('selCount').textContent=peopleSel.size;
+  $('btnDelSelected').disabled=peopleSel.size===0;
+}
+
 /* ---------- 抽奖控制 ---------- */
 $('drawPrize').addEventListener('change',e=>selectPrize(+e.target.value,false));
 $('btnAdminStart').addEventListener('click',()=>{ startRoll(); });
@@ -1370,12 +1617,16 @@ function renderAdmin(){
   // 名单表
   $('peopleTotal').textContent=state.participants.length;
   $('blackTotal').textContent=state.participants.filter(p=>p.isBlack).length;
+  $('peopleShown').textContent=state.participants.length>60?`（名单较多，仅显示前 60 条，共 ${state.participants.length} 人）`:'';
   $('peopleTable').innerHTML=state.participants.slice(0,60).map(p=>`<tr>
+    <td><input type="checkbox" class="row-chk" data-id="${p.id}" ${peopleSel.has(p.id)?'checked':''}></td>
     <td>${p.name}</td><td>${p.dept}</td><td>${p.phone}</td><td>${state.chances[p.id]||0}</td>
     <td>${p.isWhite?'<span class="tag b">白名单</span>':'—'} ${p.isBlack?'<span class="tag r">黑名单</span>':''}</td>
     <td><button class="btn btn-ghost btn-sm" onclick="toggleFlag(${p.id},'isWhite')">白</button>
-        <button class="btn btn-ghost btn-sm" onclick="toggleFlag(${p.id},'isBlack')">黑</button></td>
-  </tr>`).join('');
+        <button class="btn btn-ghost btn-sm" onclick="toggleFlag(${p.id},'isBlack')">黑</button>
+        <button class="btn btn-red btn-sm" onclick="delParticipant(${p.id})">删</button></td>
+  </tr>`).join('')||'<tr><td colspan="7" class="muted" style="text-align:center">名单为空，请导入或生成人员</td></tr>';
+  syncChkAll();
   // 手动指定下拉
   const sel=$('manualWinner');
   const whites=state.participants.filter(p=>p.isWhite);
