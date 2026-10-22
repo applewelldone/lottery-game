@@ -347,7 +347,7 @@
     <button class="tab" data-screen="admin">⚙️ 管理后台</button>
   </nav>
   <button class="btn-full" id="btnFullscreen">⛶ 全屏</button>
-  <span class="hint">交互原型 V1.12 · 数据为模拟</span>
+  <span class="hint">交互原型 V1.13 · 数据为模拟</span>
   <span class="hint" id="syncBadge" style="margin-left:10px">检测中…</span>
 </header>
 
@@ -803,12 +803,25 @@ function defaultPrizes(){
 /* ---------- 本地持久化：删除/导入/开奖等操作刷新不丢 ---------- */
 const STATE_KEY='mk_state_v1';
 let stateSyncing=false;                                // 跨标签页同步期间禁止回写，防事件乒乓
+let persistWarned=false;                                // 存储故障只提醒一次，避免刷屏
 function saveState(){
-  if(stateSyncing) return;                             // 同步中不回写（数据本就来自存储）
+  if(stateSyncing) return true;                        // 同步中不回写（数据本就来自存储）
   try{
-    const {tapOpponents,...rest}=state;              // tapOpponents 是派生缓存，不落盘
+    const {tapOpponents,...rest}=state;               // tapOpponents 是派生缓存，不落盘
+    // 背景图 base64 体积可达数 MB，且已单独存于 BG_KEY；
+    // 若随状态一起落盘会瞬间撑爆 localStorage 配额，导致后续删除/导入全部静默失败（刷新后数据复活）
+    if(rest.activity) rest.activity=Object.assign({},rest.activity,{ bgUrl:null });
     localStorage.setItem(STATE_KEY,JSON.stringify(rest));
-  }catch(e){ console.warn('状态保存失败（本地存储配额不足）',e); }
+    return true;
+  }catch(e){
+    // 配额写失败必须让用户看见：否则界面显示「已删除」但刷新后数据复活，极难排查
+    if(!persistWarned){
+      persistWarned=true;
+      console.warn('状态保存失败（本地存储配额不足）',e);
+      toast('⚠️ 本机存储空间已满，本次修改未能保存，刷新后会丢失！请在「活动配置」清除大屏背景图');
+    }
+    return false;
+  }
 }
 function loadState(){
   try{
@@ -847,6 +860,11 @@ function setSyncBadge(text,ok){
   const b=$('syncBadge'); if(!b) return;
   b.textContent=text; b.style.color=ok?'var(--green)':'var(--ink3)';
 }
+/* 数据指纹：人数 + 中奖记录数。跨设备/跨标签页肉眼比对即可判断「前后台是否同一份数据」 */
+function dataFingerprint(){
+  const p=(state.participants||[]).length, r=(state.lotteryRecords||[]).length;
+  return `${p}人/${r}条`;
+}
 async function api(path,body,needAuth){
   if(!serverMode) return null;
   try{
@@ -857,8 +875,10 @@ async function api(path,body,needAuth){
       body:JSON.stringify(body||{})});
     let j={}; try{ j=await res.json(); }catch(e){}
     if(!res.ok||!j.ok){
-      toast(j.msg||'云端操作失败');
-      if(res.status===401){ adminToken=''; localStorage.removeItem('mk_at'); sessionStorage.removeItem('mk_at'); adminLoggedIn=false; updateAdminAuth(); }
+      // 登录接口本身返回 401 是「密码错误」，不是「令牌失效」，不能误清已有令牌
+      const authFailed=res.status===401 && path!=='admin/login';
+      if(authFailed){ adminToken=''; localStorage.removeItem('mk_at'); sessionStorage.removeItem('mk_at'); adminLoggedIn=false; updateAdminAuth(); }
+      if(needAuth) toast(j.msg||'云端操作失败');     // 管理端操作失败必须提示；静默轮询失败不打扰
       return null;
     }
     if(j.state) applyServerState(j.state,j.version);
@@ -912,7 +932,7 @@ async function pollServer(){
 }
 async function probeServer(){
   if(!/^https?:$/.test(location.protocol)){
-    setSyncBadge('本地模式（直接打开文件，数据存本机）',false);
+    setSyncBadge(`本地模式（数据存本机 · ${dataFingerprint()}）`,false);
     return;
   }
   try{
@@ -925,6 +945,7 @@ async function probeServer(){
     const s=await fetch('/api/state?since=0',{cache:'no-store'});
     const sj=await s.json();
     if(sj.ok&&sj.changed) applyServerState(sj.state,sj.version);
+    setSyncBadge(`☁ 服务端共享 · 数据 ${dataFingerprint()}`,true);
     setInterval(pollServer,SYNC_POLL);
   }catch(e){
     serverMode=false;
@@ -983,7 +1004,7 @@ function updateAdminAuth(){
 $('btnAdminLogin').addEventListener('click',async()=>{
   const u=$('alUser').value.trim(), p=$('alPass').value;
   if(serverMode){                                   // 服务端校验账号密码并下发管理令牌
-    const r=await api('admin/login',{user:u,pass:p});
+    const r=await api('admin/login',{user:u,pass:p},true);
     if(!r||!r.token){                               // api() 已提示错误原因
       const box=$('adminLogin');
       box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake');
@@ -1822,11 +1843,23 @@ function applyBg(url,save){
 function downscale(dataUrl,maxW,q,cb){
   const img=new Image();
   img.onload=()=>{
-    if(img.width<=maxW){ cb(dataUrl); return; }
-    const s=maxW/img.width, c=document.createElement('canvas');
-    c.width=maxW; c.height=Math.round(img.height*s);
-    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    cb(c.toDataURL('image/jpeg',q));
+    // 无论原图是否已小于 maxW，都按 jpeg 重编码并逐步降质/降尺寸，
+    // 确保 base64 体积受控（PNG 原图轻易突破 localStorage 配额，导致状态无法落盘）
+    const tries=[{w:maxW,q:q},{w:1600,q:.72},{w:1280,q:.6},{w:1024,q:.5}];
+    let i=0;
+    (function step(){
+      const t=tries[i++];
+      const s=Math.min(1,t.w/Math.max(img.width,1));
+      const c=document.createElement('canvas');
+      c.width=Math.max(1,Math.round(img.width*s));
+      c.height=Math.max(1,Math.round(img.height*s));
+      const g=c.getContext('2d');
+      g.fillStyle='#000'; g.fillRect(0,0,c.width,c.height);   // jpeg 无透明通道，先铺黑底避免透明区变黑块
+      g.drawImage(img,0,0,c.width,c.height);
+      const out=c.toDataURL('image/jpeg',t.q);
+      if(out.length<=900*1024 || i>=tries.length) return cb(out);   // 目标 ≤ ~900KB
+      step();
+    })();
   };
   img.onerror=()=>cb(dataUrl);
   img.src=dataUrl;
@@ -1951,8 +1984,26 @@ function removeParticipants(ids){
   }
   state.tapOpponents=null;
   renderRollGrid(); renderAdmin();
+  if(serverMode){
+    // 服务端模式：删除结果以服务端为准，失败时把本地内存回滚，避免"界面已删、刷新复活"
+    api('admin/del',{ids:ids.map(Number)},true).then(j=>{
+      if(j) return;
+      location.reload();
+    });
+    toast(`已删除 ${n} 人`);
+    return;
+  }
+  if(!saveState()){                                   // 落盘失败 → 数据并未真正删除，必须明确告知
+    toast(`⚠️ 删除未保存（本机存储空间已满），刷新后这 ${n} 人会恢复。请清除大屏背景图后重试`);
+    return;
+  }
+  // 复核：确认磁盘快照里确实不含这些 id，避免任何静默失效
+  try{
+    const snap=JSON.parse(localStorage.getItem(STATE_KEY)||'{}');
+    const alive=(snap.participants||[]).filter(p=>set.has(p.id)).length;
+    if(alive) toast(`⚠️ 有 ${alive} 条未能持久化，刷新后可能恢复`);
+  }catch(e){}
   toast(`已删除 ${n} 人`);
-  if(serverMode) api('admin/del',{ids:ids},true);
 }
 function delParticipant(id){
   const p=state.participants.find(x=>x.id===id); if(!p) return;
